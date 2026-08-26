@@ -1,0 +1,896 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#05090d" />
+  <meta name="description" content="Protótipo acadêmico de monitoramento e predição de ilhas de calor urbanas em Ribeirão Preto, inspirado em conceitos de dinâmica atmosférica e transferência radiativa de Vênus." />
+  <title>SIPIC-RP — Monitoramento de Ilhas de Calor Urbanas</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <div class="app-shell" id="appShell">
+    <header class="topbar">
+      <button class="mobile-menu-button icon-button" id="mobileMenuButton" aria-label="Abrir navegação" aria-expanded="false">
+        <svg class="icon"><use href="#i-menu"></use></svg>
+      </button>
+
+      <div class="brand-block">
+        <img class="brand-logo" src="assets/logo.svg" alt="Logo do SIPIC-RP" />
+        <div>
+          <strong>SIPIC-RP</strong>
+          <span>Urban Climate Intelligence Lab</span>
+        </div>
+      </div>
+
+      <div class="mission-title">
+        <h1>Sistema Inteligente de Monitoramento e Predição de Ilhas de Calor Urbanas</h1>
+        <p>Dinâmica atmosférica comparada: Vênus × cânions urbanos de Ribeirão Preto</p>
+      </div>
+
+      <div class="topbar-status">
+        <div class="status-readout desktop-only">
+          <span>TEMPO DE SESSÃO</span>
+          <strong id="missionTime">00:00:00</strong>
+        </div>
+        <div class="status-readout desktop-only">
+          <span>RIBEIRÃO PRETO</span>
+          <strong id="localTime">--:--:--</strong>
+        </div>
+        <div class="system-chip" title="Status do protótipo">
+          <span class="system-chip-label">SISTEMA</span>
+          <strong>NOMINAL</strong>
+          <i class="pulse-dot"></i>
+        </div>
+        <button class="icon-button" id="fullscreenButton" aria-label="Ativar modo de apresentação" title="Modo de apresentação">
+          <svg class="icon"><use href="#i-fullscreen"></use></svg>
+        </button>
+      </div>
+    </header>
+
+    <aside class="sidebar" id="sidebar">
+      <nav class="primary-nav" aria-label="Navegação principal">
+        <button class="nav-item active" data-page="overview">
+          <svg class="icon"><use href="#i-dashboard"></use></svg>
+          <span>Visão geral</span>
+        </button>
+        <button class="nav-item" data-page="heatmap">
+          <svg class="icon"><use href="#i-map"></use></svg>
+          <span>Mapa térmico</span>
+        </button>
+        <button class="nav-item" data-page="analytics">
+          <svg class="icon"><use href="#i-chart"></use></svg>
+          <span>Séries e análises</span>
+        </button>
+        <button class="nav-item" data-page="venus">
+          <svg class="icon"><use href="#i-planet"></use></svg>
+          <span>Comparação com Vênus</span>
+        </button>
+        <button class="nav-item" data-page="predictions">
+          <svg class="icon"><use href="#i-ai"></use></svg>
+          <span>Predições por IA</span>
+        </button>
+        <button class="nav-item" data-page="sensors">
+          <svg class="icon"><use href="#i-sensor"></use></svg>
+          <span>Rede de sensores</span>
+        </button>
+        <button class="nav-item" data-page="data">
+          <svg class="icon"><use href="#i-database"></use></svg>
+          <span>Dados e fontes</span>
+        </button>
+        <button class="nav-item" data-page="reports">
+          <svg class="icon"><use href="#i-report"></use></svg>
+          <span>Relatórios</span>
+        </button>
+        <button class="nav-item" data-page="methodology">
+          <svg class="icon"><use href="#i-flask"></use></svg>
+          <span>Metodologia</span>
+        </button>
+      </nav>
+
+      <section class="sidebar-card system-overview">
+        <div class="eyebrow">VISÃO DO SISTEMA</div>
+        <div class="nominal-text"><i class="status-dot green"></i> Módulos operacionais</div>
+        <div class="health-gauge" aria-label="Integridade do sistema 98,7 por cento">
+          <div class="health-gauge-ring"><span>98,7%</span></div>
+          <small>INTEGRIDADE</small>
+        </div>
+        <dl class="sidebar-metrics">
+          <div><dt>Integridade dos dados</dt><dd id="sidebarDataIntegrity">--</dd></div>
+          <div><dt>Latência da API</dt><dd id="sidebarApiLatency">--</dd></div>
+          <div><dt>Fontes online</dt><dd id="sidebarSourcesOnline">--</dd></div>
+          <div><dt>Último ciclo</dt><dd id="sidebarLastCycle">--</dd></div>
+        </dl>
+      </section>
+
+      <section class="sidebar-card disclaimer-card">
+        <svg class="icon"><use href="#i-info"></use></svg>
+        <div>
+          <strong>Protótipo acadêmico</strong>
+          <p>Meteorologia e qualidade do ar vêm de APIs externas; os valores por setor são calculados por um modelo acadêmico experimental e não substituem alertas oficiais.</p>
+        </div>
+      </section>
+    </aside>
+
+    <main class="main-content" id="mainContent">
+      <section class="app-page active" id="page-overview" data-title="Visão geral">
+        <div class="overview-layout">
+          <div class="overview-main">
+            <div class="section-toolbar">
+              <div>
+                <span class="eyebrow">PAINEL OPERACIONAL</span>
+                <h2>Ambiente radiativo comparado</h2>
+              </div>
+              <div class="toolbar-actions">
+                <span class="data-mode-badge" id="dataModeBadge"><i></i>CONECTANDO À API</span>
+                <button class="small-button" id="refreshDashboardButton">
+                  <svg class="icon"><use href="#i-refresh"></use></svg>
+                  Atualizar ciclo
+                </button>
+              </div>
+            </div>
+
+            <div class="hero-grid">
+              <article class="panel hero-panel venus-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h3>Atmosfera de Vênus</h3>
+                    <p>Referência extrema de aprisionamento radiativo</p>
+                  </div>
+                  <span class="panel-tag">BASE CIENTÍFICA</span>
+                </div>
+
+                <div class="planet-comparison-body">
+                  <div class="venus-visual" aria-label="Representação estilizada do planeta Vênus">
+                    <img class="venus-realistic-image" src="assets/venus-realistic.png" alt="Representação visual realista de Vênus com sua atmosfera densa e nuvens" />
+                    <div class="orbit-ring ring-one"></div>
+                    <div class="orbit-ring ring-two"></div>
+                  </div>
+
+                  <dl class="hero-metrics">
+                    <div class="metric-emphasis"><dt>Temperatura superficial</dt><dd>464 °C</dd></div>
+                    <div><dt>Pressão atmosférica</dt><dd>≈ 92 bar</dd></div>
+                    <div><dt>Concentração de CO₂</dt><dd>≈ 96,5%</dd></div>
+                    <div><dt>Fluxo solar no topo</dt><dd>≈ 2.613 W/m²</dd></div>
+                    <div><dt>Albedo planetário</dt><dd>≈ 0,75</dd></div>
+                    <div><dt>Uso no projeto</dt><dd>Analogia radiativa</dd></div>
+                  </dl>
+                </div>
+
+                <div class="radiance-strip">
+                  <div class="strip-label"><span>Mapa radiativo infravermelho</span><small>janela espectral conceitual</small></div>
+                  <div class="thermal-scale"><span></span></div>
+                  <div class="scale-ticks"><span>baixa emissão</span><span>absorção</span><span>alta emissão</span></div>
+                  <div class="micro-wave" id="venusWave"></div>
+                </div>
+              </article>
+
+              <article class="panel hero-panel city-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h3>Ribeirão Preto — ambiente urbano</h3>
+                    <p>Cânions urbanos, cobertura do solo e estresse térmico</p>
+                  </div>
+                  <span class="panel-tag orange">CENÁRIO LOCAL</span>
+                </div>
+
+                <div class="city-comparison-body">
+                  <div class="city-visual-wrap">
+                    <svg class="city-visual" id="cityVisual" viewBox="0 0 760 390" role="img" aria-label="Modelo urbano térmico estilizado de Ribeirão Preto"></svg>
+                    <div class="city-overlay-grid" aria-hidden="true"></div>
+                    <div class="scan-line" aria-hidden="true"></div>
+                    <span class="scene-label">SIMULAÇÃO TÉRMICA 3D</span>
+                  </div>
+
+                  <dl class="hero-metrics city-metrics">
+                    <div class="metric-emphasis"><dt>Temperatura do ar</dt><dd id="airTemperature">34,6 °C</dd></div>
+                    <div><dt>Temperatura de superfície</dt><dd id="surfaceTemperature">49,2 °C</dd></div>
+                    <div><dt>Umidade relativa</dt><dd id="relativeHumidity">31%</dd></div>
+                    <div><dt>Velocidade do vento</dt><dd id="windSpeed">1,8 m/s</dd></div>
+                    <div><dt>Ilha de calor estimada</dt><dd class="heat-value" id="uhiIntensity">+5,7 °C</dd></div>
+                    <div><dt>Índice de vegetação</dt><dd id="ndviValue">0,34</dd></div>
+                  </dl>
+                </div>
+
+                <div class="radiance-strip">
+                  <div class="strip-label"><span>Temperatura de superfície terrestre</span><small>faixa térmica calculada pelo modelo</small></div>
+                  <div class="thermal-scale earth-scale"><span></span></div>
+                  <div class="scale-ticks"><span>24 °C</span><span>38 °C</span><span>54 °C</span></div>
+                  <div class="micro-wave" id="cityWave"></div>
+                </div>
+              </article>
+            </div>
+
+            <div class="model-grid">
+              <article class="panel chart-panel">
+                <div class="panel-heading compact">
+                  <div>
+                    <h3>Transferência radiativa — Vênus</h3>
+                    <p>Curvas espectrais normalizadas</p>
+                  </div>
+                  <span class="model-label">DISORT · CONCEITUAL</span>
+                </div>
+                <div class="chart-host medium" id="venusRadiativeChart" aria-label="Gráfico de transferência radiativa de Vênus"></div>
+              </article>
+
+              <article class="panel chart-panel">
+                <div class="panel-heading compact">
+                  <div>
+                    <h3>Transferência radiativa — cânion urbano</h3>
+                    <p>Emissão, múltiplas reflexões e atmosfera</p>
+                  </div>
+                  <span class="model-label">MONTE CARLO · DEMO</span>
+                </div>
+                <div class="chart-host medium" id="urbanRadiativeChart" aria-label="Gráfico de transferência radiativa urbana"></div>
+              </article>
+            </div>
+
+            <div class="lower-grid">
+              <article class="panel comparison-card">
+                <div class="panel-heading compact">
+                  <div>
+                    <h3>Índice experimental de analogia</h3>
+                    <p>Vênus × Ribeirão Preto</p>
+                  </div>
+                </div>
+                <div class="comparison-index-body">
+                  <div class="donut" style="--value: 34.7"><span>34,7%</span><small>ÍNDICE</small></div>
+                  <ul class="comparison-list">
+                    <li><span><i class="legend-dot orange"></i>Ambiente radiativo</span><strong>28,3%</strong></li>
+                    <li><span><i class="legend-dot blue"></i>Estrutura térmica</span><strong>35,6%</strong></li>
+                    <li><span><i class="legend-dot cyan"></i>Efeito composicional</span><strong>41,2%</strong></li>
+                    <li><span><i class="legend-dot gray"></i>Dinâmica de circulação</span><strong>33,7%</strong></li>
+                  </ul>
+                </div>
+              </article>
+
+              <article class="panel urban-model-card">
+                <div class="panel-heading compact">
+                  <div>
+                    <h3>Modelo urbano 3D — setores prioritários</h3>
+                    <p>LiDAR + fotogrametria · representação conceitual</p>
+                  </div>
+                  <button class="icon-button subtle" aria-label="Expandir modelo" data-page-link="heatmap"><svg class="icon"><use href="#i-expand"></use></svg></button>
+                </div>
+                <div class="urban-model-body">
+                  <svg id="miniCityModel" viewBox="0 0 820 280" role="img" aria-label="Modelo tridimensional estilizado de edifícios e pontos críticos"></svg>
+                  <dl class="model-metrics">
+                    <div><dt>Densidade construída</dt><dd>0,73</dd></div>
+                    <div><dt>Altura média</dt><dd>28,4 m</dd></div>
+                    <div><dt>Solo impermeável</dt><dd>89,7%</dd></div>
+                    <div><dt>NDVI médio</dt><dd>0,23</dd></div>
+                  </dl>
+                </div>
+              </article>
+
+              <article class="panel timeline-card">
+                <div class="panel-heading compact">
+                  <div>
+                    <h3>Pipeline da missão</h3>
+                    <p>Processamento do ciclo atual</p>
+                  </div>
+                </div>
+                <ol class="mission-timeline">
+                  <li class="complete"><i><svg class="icon"><use href="#i-satellite"></use></svg></i><span>Coleta</span><small>concluída</small></li>
+                  <li class="complete"><i><svg class="icon"><use href="#i-filter"></use></svg></i><span>Pré-processamento</span><small>concluído</small></li>
+                  <li class="running"><i><svg class="icon"><use href="#i-cpu"></use></svg></i><span>Simulação</span><small>em execução</small></li>
+                  <li><i><svg class="icon"><use href="#i-chart"></use></svg></i><span>Análise</span><small>pendente</small></li>
+                  <li><i><svg class="icon"><use href="#i-report"></use></svg></i><span>Relatório</span><small>pendente</small></li>
+                </ol>
+              </article>
+            </div>
+          </div>
+
+          <aside class="telemetry-column">
+            <article class="panel telemetry-card live-feed-card">
+              <div class="panel-heading compact">
+                <div><h3>Telemetria integrada</h3><p>Atualização sintética em tempo quase real</p></div>
+                <span class="live-badge"><i></i>AO VIVO</span>
+              </div>
+              <div class="telemetry-source-grid">
+                <div><svg class="icon"><use href="#i-satellite"></use></svg><span>Meteorologia</span><strong id="telemetryWeatherSource">Open-Meteo</strong></div>
+                <div><svg class="icon"><use href="#i-orbit"></use></svg><span>Radiação</span><strong id="telemetrySolarSource">NASA POWER</strong></div>
+                <div><svg class="icon"><use href="#i-pin"></use></svg><span>Estação</span><strong>Ribeirão Preto</strong></div>
+                <div><svg class="icon"><use href="#i-network"></use></svg><span>Atualização</span><strong id="telemetryFreshness">--</strong></div>
+              </div>
+            </article>
+
+            <article class="panel telemetry-card composition-card">
+              <div class="panel-heading compact">
+                <div><h3>Composição atmosférica — Terra</h3><p>Ar seco · valores de referência</p></div>
+              </div>
+              <div class="composition-body">
+                <div class="composition-bars">
+                  <div><span>N₂</span><b><i style="--w: 78.08%"></i></b><strong>78,08%</strong></div>
+                  <div><span>O₂</span><b><i style="--w: 20.95%"></i></b><strong>20,95%</strong></div>
+                  <div><span>Ar</span><b><i style="--w: 9.3%"></i></b><strong>0,93%</strong></div>
+                  <div><span>CO₂</span><b><i style="--w: 4.2%"></i></b><strong>≈ 0,04%</strong></div>
+                  <div><span>Outros</span><b><i style="--w: 2%"></i></b><strong>traços</strong></div>
+                </div>
+                <div class="earth-globe" aria-hidden="true">
+                  <span class="globe-grid"></span>
+                  <i class="city-point"></i>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel telemetry-card sensor-status-card">
+              <div class="panel-heading compact">
+                <div><h3>Status da rede de dados</h3><p>Fontes, setores modelados e persistência</p></div>
+                <div class="online-count"><span>ONLINE</span><strong class="sensor-online-count-value">-- / --</strong></div>
+              </div>
+              <div class="sensor-bars">
+                <div><span><svg class="icon"><use href="#i-cloud"></use></svg>Meteorologia Open-Meteo</span><strong id="sensorBarWeatherValue">--</strong><b><i id="sensorBarWeather" style="--w:0%"></i></b></div>
+                <div><span><svg class="icon"><use href="#i-air"></use></svg>Qualidade do ar / CAMS</span><strong id="sensorBarAirValue">--</strong><b><i id="sensorBarAir" style="--w:0%"></i></b></div>
+                <div><span><svg class="icon"><use href="#i-thermometer"></use></svg>Setores urbanos modelados</span><strong id="sensorBarSectorsValue">--</strong><b><i id="sensorBarSectors" style="--w:0%"></i></b></div>
+                <div><span><svg class="icon"><use href="#i-database"></use></svg>Persistência PostgreSQL</span><strong id="sensorBarDatabaseValue">--</strong><b><i id="sensorBarDatabase" style="--w:0%"></i></b></div>
+                <div class="warning"><span><svg class="icon"><use href="#i-sensor"></use></svg>Sensores físicos locais</span><strong id="sensorBarPhysicalValue">API</strong><b><i id="sensorBarPhysical" style="--w:20%"></i></b></div>
+              </div>
+            </article>
+
+            <article class="panel telemetry-card indicator-card">
+              <div class="panel-heading compact">
+                <div><h3>Indicadores de clima urbano</h3><p>Ciclo atual</p></div>
+              </div>
+              <div class="indicator-grid">
+                <div><span>TEMP. APARENTE</span><strong id="utciValue">-- °C</strong><small id="heatRiskLabel">carregando</small></div>
+                <div><span>PM₂.₅</span><strong class="green-text" id="pm25Value">-- µg/m³</strong><small id="pm25Label">carregando</small></div>
+                <div><span>IQAr</span><strong class="green-text" id="aqiValue">--</strong><small id="aqiLabel">carregando</small></div>
+                <div><span>RADIAÇÃO</span><strong id="solarRadiationValue">-- W/m²</strong><small id="solarRadiationLabel">modelo</small></div>
+              </div>
+            </article>
+
+            <article class="panel telemetry-card prediction-card">
+              <div class="panel-heading compact">
+                <div><h3>Análise preditiva</h3><p>Temperatura do ar — próximas 48 horas</p></div>
+                <div class="confidence"><span>CONFIANÇA</span><strong id="predictionConfidence">--%</strong></div>
+              </div>
+              <div class="chart-host small" id="predictionMiniChart"></div>
+              <div class="prediction-summary">
+                <span><i class="status-dot orange"></i>Pico previsto</span>
+                <strong id="predictionPeak">carregando previsão...</strong>
+              </div>
+            </article>
+
+            <article class="panel alert-card">
+              <div class="alert-icon"><svg class="icon"><use href="#i-alert"></use></svg></div>
+              <div><span id="alertLevelLabel">NÍVEL DE ATENÇÃO</span><strong id="alertTitle">Aguardando dados em tempo real</strong><p id="alertMessage">A API está a preparar o primeiro ciclo operacional.</p></div>
+            </article>
+          </aside>
+        </div>
+      </section>
+
+      <section class="app-page" id="page-heatmap" data-title="Mapa térmico">
+        <div class="page-header">
+          <div>
+            <span class="eyebrow">ANÁLISE GEOESPACIAL</span>
+            <h2>Mapa térmico de Ribeirão Preto</h2>
+            <p>Visualização interativa de temperatura, umidade, vegetação e risco térmico por setor.</p>
+          </div>
+          <div class="page-header-actions">
+            <button class="small-button" id="centerMapButton"><svg class="icon"><use href="#i-target"></use></svg>Centralizar</button>
+            <button class="primary-button" id="exportMapButton"><svg class="icon"><use href="#i-download"></use></svg>Exportar dados</button>
+          </div>
+        </div>
+
+        <div class="map-layout">
+          <article class="panel map-panel">
+            <div class="map-toolbar">
+              <div class="segmented-control" role="group" aria-label="Camada do mapa">
+                <button class="active" data-map-layer="surface">Superfície</button>
+                <button data-map-layer="air">Ar</button>
+                <button data-map-layer="humidity">Umidade</button>
+                <button data-map-layer="ndvi">Vegetação</button>
+              </div>
+              <div class="map-time-control">
+                <span>HORÁRIO</span>
+                <input id="mapTimeSlider" type="range" min="0" max="23" value="15" />
+                <strong id="mapTimeLabel">15:00</strong>
+              </div>
+            </div>
+            <div class="heatmap-canvas-wrap">
+              <svg id="heatMapSvg" class="heatmap-svg" viewBox="0 0 1200 720" role="img" aria-label="Mapa térmico estilizado de Ribeirão Preto com sensores e regiões críticas"></svg>
+              <div class="map-crosshair" aria-hidden="true"></div>
+              <div class="map-compass"><span>N</span><i></i></div>
+              <div class="map-scale"><i></i><span>2 km</span></div>
+              <div class="map-legend" id="mapLegend">
+                <strong>Temperatura de superfície</strong>
+                <div class="legend-gradient"></div>
+                <div><span>24 °C</span><span>40 °C</span><span>56 °C</span></div>
+              </div>
+              <div class="map-tooltip" id="mapTooltip" hidden></div>
+            </div>
+          </article>
+
+          <aside class="map-side-column">
+            <article class="panel selected-sector-card">
+              <div class="panel-heading compact"><div><h3>Setor selecionado</h3><p id="selectedSectorCode">RP-CENTRO-04</p></div><span class="risk-badge high">ALTO</span></div>
+              <h4 id="selectedSectorName">Centro / Quadrilátero Central</h4>
+              <div class="sector-metric-grid">
+                <div><span>Superfície</span><strong id="sectorSurface">51,8 °C</strong></div>
+                <div><span>Ar</span><strong id="sectorAir">36,1 °C</strong></div>
+                <div><span>UHI</span><strong id="sectorUhi">+6,4 °C</strong></div>
+                <div><span>NDVI</span><strong id="sectorNdvi">0,19</strong></div>
+              </div>
+              <div class="sector-drivers">
+                <span>Fatores dominantes</span>
+                <ul id="sectorDrivers">
+                  <li>Alta impermeabilização</li>
+                  <li>Baixa cobertura arbórea</li>
+                  <li>Ventilação urbana reduzida</li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="panel hotspot-list-card">
+              <div class="panel-heading compact"><div><h3>Hotspots prioritários</h3><p>Ordenados por risco composto</p></div></div>
+              <div class="hotspot-list" id="hotspotList"></div>
+            </article>
+
+            <article class="panel mitigation-card">
+              <div class="panel-heading compact"><div><h3>Cenário de mitigação</h3><p>Estimativa demonstrativa</p></div></div>
+              <div class="mitigation-control">
+                <label for="treeCoverRange"><span>Cobertura arbórea adicional</span><strong id="treeCoverValue">+15%</strong></label>
+                <input id="treeCoverRange" type="range" min="0" max="35" value="15" />
+              </div>
+              <div class="mitigation-result">
+                <div><span>Redução de superfície</span><strong id="surfaceReduction">−2,1 °C</strong></div>
+                <div><span>Redução de temperatura aparente</span><strong id="utciReduction">−1,4 °C</strong></div>
+              </div>
+              <p class="fine-print">Resultado ilustrativo. A avaliação real exige calibração local, cenários de irrigação, espécie arbórea, geometria urbana e sazonalidade.</p>
+            </article>
+          </aside>
+        </div>
+      </section>
+
+      <section class="app-page" id="page-analytics" data-title="Séries e análises">
+        <div class="page-header">
+          <div>
+            <span class="eyebrow">SÉRIES TEMPORAIS</span>
+            <h2>Dinâmica térmica e atmosférica</h2>
+            <p>Comparação entre sensores urbanos, referência periurbana e variáveis de cobertura do solo.</p>
+          </div>
+          <div class="page-header-actions">
+            <div class="date-chip"><svg class="icon"><use href="#i-calendar"></use></svg><span>Últimos 7 dias</span></div>
+          </div>
+        </div>
+
+        <div class="kpi-grid six">
+          <article class="kpi-card"><span>Máxima do ar</span><strong id="analyticsMaxAir">-- °C</strong><small id="analyticsMaxAirNote">calculando</small></article>
+          <article class="kpi-card"><span>Máxima superficial</span><strong id="analyticsMaxSurface">-- °C</strong><small id="analyticsMaxSurfaceNote">calculando</small></article>
+          <article class="kpi-card"><span>UHI noturna</span><strong id="analyticsNightUhi">-- °C</strong><small id="analyticsNightUhiNote">calculando</small></article>
+          <article class="kpi-card"><span>Umidade mínima</span><strong id="analyticsMinHumidity">--%</strong><small id="analyticsMinHumidityNote">calculando</small></article>
+          <article class="kpi-card"><span>Horas em risco</span><strong id="analyticsRiskHours">-- h</strong><small id="analyticsRiskHoursNote">nível alto ou crítico</small></article>
+          <article class="kpi-card"><span>Confiança média</span><strong id="analyticsConfidence">--%</strong><small>modelo de 48 h</small></article>
+        </div>
+
+        <div class="analytics-grid">
+          <article class="panel wide-chart-card">
+            <div class="panel-heading"><div><h3>Temperatura do ar — urbano × periurbano</h3><p id="analyticsSeriesStatus">Histórico persistido quando disponível · °C</p></div><div class="chart-legend"><span><i class="legend-line cyan"></i>Urbano</span><span><i class="legend-line blue"></i>Periurbano</span></div></div>
+            <div class="chart-host large" id="airTemperatureChart"></div>
+          </article>
+
+          <article class="panel correlation-card">
+            <div class="panel-heading compact"><div><h3>Parâmetros morfológicos</h3><p>Setor Centro · valores normalizados do modelo</p></div></div>
+            <div class="correlation-list">
+              <div><span>Impermeabilização</span><b><i id="morphImperviousBar" style="--w:0%"></i></b><strong id="morphImpervious">--</strong></div>
+              <div><span>Densidade construída</span><b><i id="morphDensityBar" style="--w:0%"></i></b><strong id="morphDensity">--</strong></div>
+              <div><span>Déficit de vegetação (1−NDVI)</span><b><i id="morphNdviBar" style="--w:0%"></i></b><strong id="morphNdvi">--</strong></div>
+              <div><span>Déficit de ventilação</span><b><i id="morphVentilationBar" style="--w:0%"></i></b><strong id="morphVentilation">--</strong></div>
+              <div><span>Obstrução do céu</span><b><i id="morphSkyBar" style="--w:0%"></i></b><strong id="morphSky">--</strong></div>
+            </div>
+          </article>
+
+          <article class="panel half-chart-card">
+            <div class="panel-heading compact"><div><h3>Umidade relativa e velocidade do vento</h3><p>Variação horária</p></div></div>
+            <div class="chart-host medium" id="humidityWindChart"></div>
+          </article>
+
+          <article class="panel half-chart-card">
+            <div class="panel-heading compact"><div><h3>Intensidade da ilha de calor</h3><p>Diferença urbano − referência</p></div></div>
+            <div class="chart-host medium" id="uhiChart"></div>
+          </article>
+
+          <article class="panel event-table-card">
+            <div class="panel-heading"><div><h3>Picos térmicos previstos</h3><p>Detecção automática por setor nas próximas 48 horas</p></div><button class="small-button" disabled><svg class="icon"><use href="#i-filter"></use></svg>Automático</button></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Início</th><th>Duração</th><th>Setor</th><th>Máxima</th><th>UHI</th><th>Classificação</th></tr></thead>
+                <tbody id="forecastEventsBody"><tr><td colspan="6">Aguardando o primeiro ciclo da API...</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-page" id="page-venus" data-title="Comparação com Vênus">
+        <div class="page-header">
+          <div>
+            <span class="eyebrow">MODELO COMPARATIVO</span>
+            <h2>O que Vênus ensina sobre aprisionamento de calor</h2>
+            <p>Uma analogia científica controlada entre transferência radiativa planetária e armazenamento térmico em cânions urbanos.</p>
+          </div>
+          <div class="page-header-actions"><span class="data-mode-badge"><i></i>COMPARAÇÃO CONCEITUAL</span></div>
+        </div>
+
+        <div class="venus-page-grid">
+          <article class="panel venus-explainer-card">
+            <div class="venus-explainer-visual">
+              <img class="venus-orbit-realistic" src="assets/venus-orbit-realistic.png" alt="Representação científica do Sol e de Vênus em uma trajetória orbital" />
+            </div>
+            <div class="venus-explainer-content">
+              <span class="eyebrow">ANALOGIA, NÃO EQUIVALÊNCIA</span>
+              <h3>Vênus funciona como um laboratório natural extremo</h3>
+              <p>A atmosfera venusiana é dominada por dióxido de carbono, possui enorme pressão e retém calor de forma muito mais intensa que a atmosfera terrestre. No projeto, essa dinâmica não é usada como previsão direta para Ribeirão Preto. Ela inspira variáveis e testes de sensibilidade sobre absorção, emissão, reflexão múltipla e circulação do ar.</p>
+              <div class="principle-grid">
+                <div><svg class="icon"><use href="#i-radiation"></use></svg><strong>Transferência radiativa</strong><span>Energia absorvida, emitida e reprocessada.</span></div>
+                <div><svg class="icon"><use href="#i-wind"></use></svg><strong>Circulação atmosférica</strong><span>Redistribuição de calor e transporte por vento.</span></div>
+                <div><svg class="icon"><use href="#i-building"></use></svg><strong>Aprisionamento urbano</strong><span>Reflexões e baixa ventilação entre edificações.</span></div>
+                <div><svg class="icon"><use href="#i-leaf"></use></svg><strong>Contraste de superfície</strong><span>Vegetação, albedo e evapotranspiração.</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel comparison-table-card">
+            <div class="panel-heading"><div><h3>Matriz de comparação científica</h3><p>Escalas e mecanismos observados no protótipo</p></div></div>
+            <div class="table-wrap">
+              <table class="comparison-table">
+                <thead><tr><th>Elemento</th><th>Vênus</th><th>Ribeirão Preto urbano</th><th>Uso no modelo</th></tr></thead>
+                <tbody>
+                  <tr><td>Composição</td><td>Atmosfera rica em CO₂</td><td>Ar terrestre com poluentes em traços</td><td>Não transferido diretamente</td></tr>
+                  <tr><td>Pressão</td><td>≈ 92 vezes a terrestre ao nível do mar</td><td>Próxima de 1 atmosfera</td><td>Somente referência de regime extremo</td></tr>
+                  <tr><td>Aprisionamento de calor</td><td>Efeito estufa planetário muito intenso</td><td>Armazenamento em materiais + geometria urbana</td><td>Analogia de balanço energético</td></tr>
+                  <tr><td>Circulação</td><td>Super-rotação atmosférica</td><td>Ventos locais e canalização em ruas</td><td>Comparação de transporte térmico</td></tr>
+                  <tr><td>Nuvens / superfícies</td><td>Nuvens espessas de ácido sulfúrico</td><td>Asfalto, concreto, telhados e vegetação</td><td>Parâmetros de albedo e emissividade</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel spectral-card">
+            <div class="panel-heading"><div><h3>Janelas espectrais comparadas</h3><p>Representação didática de absorção e emissão</p></div></div>
+            <div class="chart-host large" id="spectralComparisonChart"></div>
+          </article>
+
+          <article class="panel guardrails-card">
+            <div class="panel-heading compact"><div><h3>Limites científicos do projeto</h3><p>Regras para evitar interpretações incorretas</p></div></div>
+            <ul class="guardrail-list">
+              <li><i>01</i><div><strong>Vênus não prevê o clima terrestre.</strong><span>A comparação serve para formular hipóteses e testar mecanismos radiativos.</span></div></li>
+              <li><i>02</i><div><strong>Dados locais têm prioridade.</strong><span>Sensores, estações, satélites e morfologia urbana alimentam o modelo principal.</span></div></li>
+              <li><i>03</i><div><strong>Resultados precisam de validação.</strong><span>Predições devem ser comparadas com observações independentes e métricas de erro.</span></div></li>
+              <li><i>04</i><div><strong>Risco térmico inclui exposição social.</strong><span>Temperatura sozinha não representa vulnerabilidade humana completa.</span></div></li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-page" id="page-predictions" data-title="Predições por IA">
+        <div class="page-header">
+          <div>
+            <span class="eyebrow">MODELO PREDITIVO</span>
+            <h2>Predição de risco térmico nas próximas 48 horas</h2>
+            <p>Previsão meteorológica ao vivo com correção morfológica experimental, intervalo de incerteza e explicabilidade por setor.</p>
+          </div>
+          <div class="page-header-actions"><button class="primary-button" id="runPredictionButton"><svg class="icon"><use href="#i-play"></use></svg>Executar novo ciclo</button></div>
+        </div>
+
+        <div class="prediction-layout">
+          <article class="panel prediction-main-chart">
+            <div class="panel-heading"><div><h3>Temperatura prevista e faixa de incerteza</h3><p>Agregação urbana · resolução horária</p></div><div class="model-health"><span>MODELO</span><strong id="modelVersionLabel">SIPIC-Hybrid v1.0</strong></div></div>
+            <div class="chart-host xlarge" id="predictionFullChart"></div>
+          </article>
+
+          <article class="panel model-score-card">
+            <div class="panel-heading compact"><div><h3>Estado do modelo</h3><p>Confiança operacional; acurácia científica ainda requer sensores locais</p></div></div>
+            <div class="score-ring"><span id="modelConfidenceScore">--%</span><small>CONFIANÇA</small></div>
+            <div class="model-score-grid">
+              <div><span>Horizonte</span><strong id="modelHorizon">48 h</strong></div>
+              <div><span>Setores</span><strong id="modelSectorCount">8</strong></div>
+              <div><span>Fonte</span><strong>Open-Meteo</strong></div>
+              <div><span>Validação</span><strong id="modelValidationStatus">Pendente</strong></div>
+            </div>
+          </article>
+
+          <article class="panel risk-sector-card">
+            <div class="panel-heading"><div><h3>Risco previsto por setor</h3><p>Próximo pico diurno</p></div><span class="risk-badge high" id="riskPeakBadge">CALCULANDO</span></div>
+            <div class="risk-sector-list" id="riskSectorList"></div>
+          </article>
+
+          <article class="panel explainability-card">
+            <div class="panel-heading"><div><h3>Contribuições do modelo explicável</h3><p>Participação relativa dos fatores morfológicos no setor Centro</p></div></div>
+            <div class="feature-importance" id="featureImportance">
+              <div><span>Temperatura das últimas 6 h</span><b><i style="--w:92%"></i></b><strong>24,8%</strong></div>
+              <div><span>Temperatura de superfície</span><b><i style="--w:81%"></i></b><strong>21,6%</strong></div>
+              <div><span>Umidade relativa</span><b><i style="--w:67%"></i></b><strong>17,9%</strong></div>
+              <div><span>Geometria urbana</span><b><i style="--w:54%"></i></b><strong>14,3%</strong></div>
+              <div><span>Velocidade do vento</span><b><i style="--w:47%"></i></b><strong>12,5%</strong></div>
+              <div><span>NDVI e sombreamento</span><b><i style="--w:33%"></i></b><strong>8,9%</strong></div>
+            </div>
+          </article>
+
+          <article class="panel alert-timeline-card">
+            <div class="panel-heading"><div><h3>Linha do tempo de risco</h3><p>Classificação experimental de estresse térmico</p></div></div>
+            <div class="alert-timeline" id="alertTimeline"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-page" id="page-sensors" data-title="Rede de sensores">
+        <div class="page-header">
+          <div>
+            <span class="eyebrow">INFRAESTRUTURA DE COLETA</span>
+            <h2>Rede de sensores urbanos</h2>
+            <p>Monitoramento de temperatura, umidade, vento, radiação e qualidade do ar em pontos estratégicos.</p>
+          </div>
+          <div class="page-header-actions"><button class="small-button" data-page-link="data"><svg class="icon"><use href="#i-database"></use></svg>Ver API de ingestão</button></div>
+        </div>
+
+        <div class="sensor-page-layout">
+          <article class="panel sensor-map-panel">
+            <div class="panel-heading"><div><h3>Topologia da rede</h3><p>Topologia lógica e estado operacional das estações</p></div><div class="online-count"><span>ONLINE</span><strong class="sensor-online-count-value">-- / --</strong></div></div>
+            <svg id="sensorNetworkSvg" class="sensor-network-svg" viewBox="0 0 1000 620" role="img" aria-label="Mapa esquemático da rede de sensores"></svg>
+          </article>
+
+          <article class="panel sensor-inventory-card">
+            <div class="panel-heading"><div><h3>Inventário de estações</h3><p>Saúde e última telemetria</p></div><button class="icon-button subtle" id="refreshSensorsButton" aria-label="Atualizar rede"><svg class="icon"><use href="#i-refresh"></use></svg></button></div>
+            <div class="sensor-inventory" id="sensorInventory"></div>
+          </article>
+
+          <article class="panel sensor-quality-card">
+            <div class="panel-heading compact"><div><h3>Qualidade dos dados</h3><p>Últimas 24 horas</p></div></div>
+            <div class="quality-grid">
+              <div><span>Fontes disponíveis</span><strong id="qualitySources">--</strong><b><i id="qualitySourcesBar" style="--w:0%"></i></b></div>
+              <div><span>Estações online</span><strong id="qualityStations">--</strong><b><i id="qualityStationsBar" style="--w:0%"></i></b></div>
+              <div><span>Latência da API</span><strong id="qualityLatency">--</strong><b><i id="qualityLatencyBar" style="--w:0%"></i></b></div>
+              <div><span>Persistência</span><strong id="qualityDatabase">--</strong><b><i id="qualityDatabaseBar" style="--w:0%"></i></b></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-page" id="page-data" data-title="Dados e fontes">
+        <div class="page-header">
+          <div>
+            <span class="eyebrow">GOVERNANÇA DE DADOS</span>
+            <h2>Fontes, integração e rastreabilidade</h2>
+            <p>Arquitetura preparada para separar observação, dado calculado, simulação e predição.</p>
+          </div>
+        </div>
+
+        <div class="data-page-grid">
+          <article class="panel data-source-card" data-source-card="open_meteo_weather">
+            <div class="source-icon weather"><svg class="icon"><use href="#i-cloud"></use></svg></div>
+            <div><span>METEOROLOGIA AO VIVO</span><h3>Open-Meteo Forecast API</h3><p>Temperatura, umidade, vento, pressão, chuva e radiação com atualização automática e cache controlado.</p></div>
+            <span class="source-status live" id="sourceWeatherStatus">CONECTANDO</span>
+          </article>
+          <article class="panel data-source-card" data-source-card="open_meteo_air">
+            <div class="source-icon local"><svg class="icon"><use href="#i-air"></use></svg></div>
+            <div><span>QUALIDADE DO AR</span><h3>CAMS via Open-Meteo</h3><p>PM₂.₅, PM₁₀, O₃, NO₂, CO, SO₂ e IQAr em escala regional de modelo atmosférico.</p></div>
+            <span class="source-status live" id="sourceAirStatus">CONECTANDO</span>
+          </article>
+          <article class="panel data-source-card" data-source-card="nasa_power">
+            <div class="source-icon satellite"><svg class="icon"><use href="#i-satellite"></use></svg></div>
+            <div><span>RADIAÇÃO E CLIMA</span><h3>NASA POWER API</h3><p>Série diária de radiação solar, temperatura, umidade, vento e precipitação para contexto climático.</p></div>
+            <span class="source-status live" id="sourceNasaStatus">CONECTANDO</span>
+          </article>
+          <article class="panel data-source-card" data-source-card="supabase">
+            <div class="source-icon city"><svg class="icon"><use href="#i-database"></use></svg></div>
+            <div><span>BANCO DE DADOS</span><h3>Supabase PostgreSQL</h3><p>Persistência de observações, predições, alertas, relatórios, catálogo de sensores e cache de APIs.</p></div>
+            <span class="source-status live" id="sourceDatabaseStatus">CONECTANDO</span>
+          </article>
+          <article class="panel data-source-card" data-source-card="inmet">
+            <div class="source-icon weather"><svg class="icon"><use href="#i-thermometer"></use></svg></div>
+            <div><span>VALIDAÇÃO OFICIAL</span><h3>INMET</h3><p>Fonte oficial prevista para validação observacional; o painel não apresenta esses dados como integrados enquanto não houver contrato estável.</p></div>
+            <span class="source-status planned">REFERÊNCIA</span>
+          </article>
+          <article class="panel data-source-card" data-source-card="local_sensors">
+            <div class="source-icon local"><svg class="icon"><use href="#i-sensor"></use></svg></div>
+            <div><span>REDE LOCAL</span><h3>API protegida para sensores</h3><p>Endpoint autenticado pronto para receber estações físicas, com validação de unidades, faixas e qualidade.</p></div>
+            <span class="source-status planned">PROTEGIDA</span>
+          </article>
+
+          <article class="panel data-pipeline-card">
+            <div class="panel-heading"><div><h3>Pipeline de integração</h3><p>Arquitetura funcional em operação</p></div></div>
+            <div class="pipeline-diagram">
+              <div><svg class="icon"><use href="#i-satellite"></use></svg><strong>Fontes</strong><span>estações · satélites · sensores</span></div>
+              <i><svg class="icon"><use href="#i-arrow-right"></use></svg></i>
+              <div><svg class="icon"><use href="#i-filter"></use></svg><strong>ETL e qualidade</strong><span>unidades · falhas · calibração</span></div>
+              <i><svg class="icon"><use href="#i-arrow-right"></use></svg></i>
+              <div><svg class="icon"><use href="#i-database"></use></svg><strong>PostgreSQL / PostGIS</strong><span>histórico · espacial · metadados</span></div>
+              <i><svg class="icon"><use href="#i-arrow-right"></use></svg></i>
+              <div><svg class="icon"><use href="#i-ai"></use></svg><strong>Modelos</strong><span>fusão · predição · incerteza</span></div>
+              <i><svg class="icon"><use href="#i-arrow-right"></use></svg></i>
+              <div><svg class="icon"><use href="#i-dashboard"></use></svg><strong>Frontend</strong><span>mapas · alertas · relatórios</span></div>
+            </div>
+          </article>
+
+          <article class="panel api-status-card">
+            <div class="panel-heading">
+              <div><h3>API operacional do SIPIC-RP</h3><p>Backend serverless, cache, banco de dados e documentação OpenAPI.</p></div>
+              <button class="small-button" id="testApiButton"><svg class="icon"><use href="#i-refresh"></use></svg>Testar API</button>
+            </div>
+            <div class="api-endpoint-row">
+              <span>BASE URL</span>
+              <code id="apiBaseUrl">carregando...</code>
+              <button class="table-action" id="copyApiUrlButton">Copiar</button>
+            </div>
+            <div class="api-status-grid" id="apiStatusGrid">
+              <div><span>API</span><strong id="apiHealthStatus">CONECTANDO</strong><small id="apiHealthLatency">--</small></div>
+              <div><span>Banco</span><strong id="apiDatabaseStatus">--</strong><small id="apiDatabaseCounts">--</small></div>
+              <div><span>Cache</span><strong id="apiCacheStatus">--</strong><small id="apiCacheDetails">--</small></div>
+              <div><span>Modelo</span><strong id="apiModelStatus">--</strong><small id="apiModelDetails">--</small></div>
+            </div>
+            <div class="api-route-list">
+              <code>GET /dashboard</code><code>GET /weather</code><code>GET /air-quality</code><code>GET /solar</code><code>GET /analytics</code><code>GET /openapi</code>
+            </div>
+          </article>
+
+          <article class="panel data-taxonomy-card">
+            <div class="panel-heading"><div><h3>Taxonomia visual obrigatória</h3><p>Cada número do sistema deve indicar sua origem</p></div></div>
+            <div class="taxonomy-grid">
+              <div class="observed"><span>OBSERVADO</span><strong>34,2 °C</strong><p>Leitura direta ou fonte oficial.</p></div>
+              <div class="calculated"><span>CALCULADO</span><strong>+5,7 °C</strong><p>Derivado de observações e fórmula.</p></div>
+              <div class="simulated"><span>SIMULADO</span><strong>−2,1 °C</strong><p>Cenário hipotético ou modelo físico.</p></div>
+              <div class="predicted"><span>PREDITO</span><strong>38,8 °C</strong><p>Estimativa futura com incerteza.</p></div>
+            </div>
+          </article>
+
+          <article class="panel schema-card">
+            <div class="panel-heading"><div><h3>Exemplo de contrato de dados</h3><p>Estrutura usada pela API de ingestão</p></div><button class="small-button" id="copySchemaButton"><svg class="icon"><use href="#i-copy"></use></svg>Copiar</button></div>
+            <pre id="schemaCode"><code>{
+  "station_code": "RP-CENTRO-04",
+  "observed_at": "2026-08-25T15:00:00-03:00",
+  "source": "sensor_escolar_01",
+  "quality_score": 95,
+  "measurements": {
+    "air_temperature_c": 34.6,
+    "relative_humidity_pct": 31,
+    "wind_speed_ms": 1.8,
+    "shortwave_radiation_wm2": 812
+  }
+}</code></pre>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-page" id="page-reports" data-title="Relatórios">
+        <div class="page-header">
+          <div>
+            <span class="eyebrow">COMUNICAÇÃO CIENTÍFICA</span>
+            <h2>Relatórios e exportações</h2>
+            <p>Gere materiais para apresentação, análise de resultados e documentação do projeto.</p>
+          </div>
+          <div class="page-header-actions"><button class="primary-button" id="printReportButton"><svg class="icon"><use href="#i-print"></use></svg>Imprimir relatório</button></div>
+        </div>
+
+        <div class="reports-grid">
+          <article class="panel report-template featured">
+            <div class="report-cover thermal"><svg class="icon"><use href="#i-report"></use></svg><span>RELATÓRIO OPERACIONAL</span></div>
+            <div class="report-content"><span>ATUALIZADO AGORA</span><h3>Boletim de risco térmico urbano</h3><p>Resumo dos indicadores, hotspots, predição de 48 horas e recomendações de comunicação.</p><div class="report-actions"><button class="primary-button" id="downloadJsonButton"><svg class="icon"><use href="#i-download"></use></svg>Gerar PDF</button><button class="small-button" id="downloadCsvButton">PDF por setor</button></div></div>
+          </article>
+          <article class="panel report-template">
+            <div class="report-cover venus"><svg class="icon"><use href="#i-planet"></use></svg><span>BASE TEÓRICA</span></div>
+            <div class="report-content"><span>MODELO ACADÊMICO</span><h3>Comparação radiativa Vênus × urbano</h3><p>Limites da analogia, parâmetros de transferência radiativa e hipóteses de pesquisa.</p><div class="report-actions"><button class="small-button" data-page-link="venus">Abrir seção</button></div></div>
+          </article>
+          <article class="panel report-template">
+            <div class="report-cover map"><svg class="icon"><use href="#i-map"></use></svg><span>ANÁLISE ESPACIAL</span></div>
+            <div class="report-content"><span>RIBEIRÃO PRETO</span><h3>Mapa de hotspots térmicos</h3><p>Setores prioritários, intensidade de ilha de calor e cenários de vegetação.</p><div class="report-actions"><button class="small-button" data-page-link="heatmap">Abrir mapa</button></div></div>
+          </article>
+          <article class="panel report-template">
+            <div class="report-cover methods"><svg class="icon"><use href="#i-flask"></use></svg><span>METODOLOGIA</span></div>
+            <div class="report-content"><span>RASTREABILIDADE</span><h3>Plano de validação científica</h3><p>Variáveis, fontes, métricas de erro, controles e documentação de incerteza.</p><div class="report-actions"><button class="small-button" data-page-link="methodology">Abrir plano</button></div></div>
+          </article>
+
+          <article class="panel report-history-card">
+            <div class="panel-heading"><div><h3>Exportações disponíveis</h3><p>Arquivos produzidos com o ciclo operacional carregado no navegador</p></div></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Relatório</th><th>Período</th><th>Formato</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  <tr><td>Boletim operacional completo</td><td>Ciclo carregado</td><td>PDF</td><td><span class="table-badge ready">Disponível</span></td><td><button class="table-action" data-report-action="complete">Gerar PDF</button></td></tr>
+                  <tr><td>Indicadores por setor</td><td>Ciclo carregado</td><td>PDF</td><td><span class="table-badge ready">Disponível</span></td><td><button class="table-action" data-report-action="sectors">Gerar PDF</button></td></tr>
+                  <tr><td>Resumo geográfico dos setores</td><td>Ciclo carregado</td><td>PDF</td><td><span class="table-badge ready">Disponível</span></td><td><button class="table-action" data-report-action="map">Gerar PDF</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-page" id="page-methodology" data-title="Metodologia">
+        <div class="page-header">
+          <div>
+            <span class="eyebrow">PLANO CIENTÍFICO</span>
+            <h2>Metodologia proposta</h2>
+            <p>Estrutura de pesquisa para transformar o protótipo visual em um sistema cientificamente validável.</p>
+          </div>
+        </div>
+
+        <div class="method-grid">
+          <article class="panel method-step"><span class="step-number">01</span><div><h3>Definição da pergunta</h3><p>Quais combinações de morfologia urbana, cobertura vegetal e condições atmosféricas explicam e antecipam hotspots térmicos em Ribeirão Preto?</p></div></article>
+          <article class="panel method-step"><span class="step-number">02</span><div><h3>Coleta multiescala</h3><p>Combinar estações oficiais, sensores locais, produtos de satélite e dados espaciais de edificações, vias e vegetação.</p></div></article>
+          <article class="panel method-step"><span class="step-number">03</span><div><h3>Controle de qualidade</h3><p>Calibrar sensores, tratar ausências, sincronizar horários, converter unidades e registrar incerteza e procedência.</p></div></article>
+          <article class="panel method-step"><span class="step-number">04</span><div><h3>Modelagem física e estatística</h3><p>Calcular balanço energético urbano, ventilação, armazenamento térmico e usar aprendizagem de máquina para previsão de curto prazo.</p></div></article>
+          <article class="panel method-step"><span class="step-number">05</span><div><h3>Analogia com Vênus</h3><p>Usar Vênus como caso extremo para testar sensibilidade radiativa, sempre mantendo as escalas e limitações explicitadas.</p></div></article>
+          <article class="panel method-step"><span class="step-number">06</span><div><h3>Validação independente</h3><p>Separar períodos de treino e teste, comparar com estações não usadas no ajuste e reportar MAE, RMSE, viés e intervalos de confiança.</p></div></article>
+
+          <article class="panel hypothesis-card">
+            <div class="panel-heading"><div><h3>Hipóteses orientadoras</h3><p>Exemplos para organizar o estudo</p></div></div>
+            <div class="hypothesis-list">
+              <div><i>H1</i><p>Setores com maior impermeabilização e menor NDVI apresentam temperaturas de superfície significativamente superiores.</p></div>
+              <div><i>H2</i><p>Cânions urbanos com baixa razão de abertura ao céu mantêm maior intensidade de ilha de calor após o pôr do sol.</p></div>
+              <div><i>H3</i><p>Modelos híbridos, combinando variáveis físicas e aprendizado de máquina, superam modelos puramente estatísticos em previsão de 24–48 horas.</p></div>
+              <div><i>H4</i><p>Cenários de aumento de cobertura arbórea reduzem temperatura radiante média e temperatura aparente nos setores mais vulneráveis.</p></div>
+            </div>
+          </article>
+
+          <article class="panel validation-card">
+            <div class="panel-heading"><div><h3>Checklist de validação</h3><p>Itens essenciais antes de apresentar resultados como científicos</p></div></div>
+            <div class="validation-checklist">
+              <label><input type="checkbox" checked disabled /><span>Separação clara entre dado observado, modelado, calculado e predito</span></label>
+              <label><input type="checkbox" /><span>Calibração cruzada dos sensores locais</span></label>
+              <label><input type="checkbox" /><span>Conjunto independente de validação</span></label>
+              <label><input type="checkbox" /><span>Análise de sensibilidade e incerteza</span></label>
+              <label><input type="checkbox" /><span>Revisão das hipóteses por orientador</span></label>
+              <label><input type="checkbox" /><span>Protocolo ético para dados de vulnerabilidade</span></label>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <div><span>FONTES:</span> Open-Meteo · CAMS · NASA POWER · Supabase · INMET (referência)</div>
+      <div><span>ARQUITETURA:</span> Frontend responsivo · Edge API · PostgreSQL · cache · modelo híbrido</div>
+      <div><span>VERSÃO:</span> SIPIC-RP v1.0.0</div>
+    </footer>
+  </div>
+
+  <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <svg class="svg-sprite" aria-hidden="true" width="0" height="0">
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-dashboard" viewBox="0 0 24 24"><path d="M3 13h8V3H3v10Zm10 8h8V11h-8v10ZM3 21h8v-6H3v6Zm10-12h8V3h-8v6Z"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m4 7H2"/></symbol>
+    <symbol id="i-planet" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M4.5 8.5C1.7 10.4.4 12.3 1 13.8c1 2.4 7 2.1 13.4-.7s10.7-6.9 9.6-9.3c-.6-1.4-3-1.8-6.1-1.3"/></symbol>
+    <symbol id="i-ai" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3"/><path d="M9 9h.01M15 9h.01M8.5 14.5c2.2 1.8 4.8 1.8 7 0M9 2v3m6-3v3M9 19v3m6-3v3M2 9h3m-3 6h3m14-6h3m-3 6h3"/></symbol>
+    <symbol id="i-sensor" viewBox="0 0 24 24"><path d="M12 19v3m-4 0h8M12 2v5m0 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4m8.4 0a6 6 0 0 0 0-8.4M5 5a10 10 0 0 0 0 14m14 0a10 10 0 0 0 0-14"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></symbol>
+    <symbol id="i-report" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6V2Z"/><path d="M14 2v5h5M9 12h6M9 16h6"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6m-5 0v6l-5 9a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9V3"/><path d="M8 14h8"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+    <symbol id="i-fullscreen" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M18.5 9A7 7 0 0 0 6 6.5L4 9m16 6-2 2.5A7 7 0 0 1 5.5 15"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5"/></symbol>
+    <symbol id="i-satellite" viewBox="0 0 24 24"><path d="m7 13-4 4m14-6 4-4M8 4l12 12-4 4L4 8l4-4Z"/><path d="M14 6 6 14M3 3l5 1-4 4-1-5Zm18 18-5-1 4-4 1 5Z"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8L3 5Z"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9V9ZM9 2v3m6-3v3M9 19v3m6-3v3M2 9h3m-3 6h3m14-6h3m-3 6h3"/></symbol>
+    <symbol id="i-orbit" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-30 12 12)"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><path d="M12 5v4m-7 5h4m6 0h4M5 14v5h14v-5"/><circle cx="12" cy="3" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 8.5 4.8 4.8 0 0 0 7 18Z"/></symbol>
+    <symbol id="i-air" viewBox="0 0 24 24"><path d="M3 8h11a2.5 2.5 0 1 0-2.5-2.5M3 12h16a2.5 2.5 0 1 1-2.5 2.5M3 16h7"/></symbol>
+    <symbol id="i-thermometer" viewBox="0 0 24 24"><path d="M14 14.8V5a4 4 0 0 0-8 0v9.8a6 6 0 1 0 8 0Z"/><path d="M10 10v7"/></symbol>
+    <symbol id="i-radiation" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4M4.9 4.9l2.8 2.8m8.6 8.6 2.8 2.8m0-14.2-2.8 2.8m-8.6 8.6-2.8 2.8"/></symbol>
+    <symbol id="i-wind" viewBox="0 0 24 24"><path d="M3 8h11a2.5 2.5 0 1 0-2.5-2.5M3 12h16a2.5 2.5 0 1 1-2.5 2.5M3 16h8"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m12 3 10 18H2L12 3Z"/><path d="M12 9v5m0 3h.01"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 21h16"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4m8-4v4M3 10h18"/></symbol>
+    <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 21V3h12v18M8 7h2m2 0h2M8 11h2m2 0h2M8 15h2m2 0h2m4-6h2v12H2"/></symbol>
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M20 4C10 4 4 8 4 15c0 3 2 5 5 5 7 0 11-6 11-16Z"/><path d="M5 19c3-5 7-8 12-10"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7"/></symbol>
+  </svg>
+
+  <script src="config.js"></script>
+  <script src="app.js" defer></script>
+</body>
+</html>

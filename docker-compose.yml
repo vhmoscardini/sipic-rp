@@ -1,0 +1,11 @@
+services:
+  sipic-rp:
+    build: .
+    container_name: sipic-rp
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      SIPIC_API_BASE_URL: https://pzwtoksbbfvgsnwunzri.supabase.co/functions/v1/sipic-api

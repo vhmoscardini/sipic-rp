@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">SIPIC-RP</title>
+  <desc id="desc">Símbolo de órbita planetária e monitoramento térmico urbano</desc>
+  <defs>
+    <radialGradient id="g" cx="34%" cy="28%" r="75%">
+      <stop offset="0" stop-color="#4bc5ff"/>
+      <stop offset=".52" stop-color="#176a9e"/>
+      <stop offset="1" stop-color="#071524"/>
+    </radialGradient>
+    <linearGradient id="h" x1="0" x2="1">
+      <stop offset="0" stop-color="#ffb328"/>
+      <stop offset="1" stop-color="#ff5a19"/>
+    </linearGradient>
+  </defs>
+  <circle cx="48" cy="48" r="36" fill="url(#g)" stroke="#3eb7f0" stroke-opacity=".55"/>
+  <path d="M18 54c10-16 31-27 53-25 8 1 13 3 15 6 3 6-6 15-21 23S31 70 19 67c-7-2-8-7-1-13Z" fill="none" stroke="#8bd8ff" stroke-width="2.5" stroke-opacity=".82"/>
+  <path d="M63 23c8 8 12 19 10 31-2 14-11 25-24 30 18-3 33-17 37-35 2-10 0-20-5-28l-18 2Z" fill="url(#h)" opacity=".96"/>
+  <path d="M28 57h8V42h8v15h8V34h8v23h8" fill="none" stroke="#e8f7ff" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="70" cy="31" r="4" fill="#ffd35a" stroke="#fff0b0"/>
+</svg>
