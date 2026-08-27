@@ -888,7 +888,7 @@ svg {
   display: grid;
   place-items: center;
   min-height: 255px;
-  overflow: visible;
+  overflow: hidden;
   isolation: isolate;
 }
 .venus-visual::after {
@@ -915,19 +915,17 @@ svg {
   position: relative;
   z-index: 4;
   display: block;
-  width: min(104%, 340px);
+  /* Mantém o planeta totalmente contido no painel, com margem visual. */
+  width: min(86%, 285px);
+  max-height: 235px;
   aspect-ratio: 1;
   object-fit: cover;
   object-position: 48% 52%;
   border-radius: 50%;
-  transform: translate(-2%, -1%) scale(1.02);
+  transform: none;
   transform-origin: center;
-  border: 2px solid rgba(255, 198, 93, .72);
-  box-shadow:
-    0 22px 36px rgba(0, 0, 0, .48),
-    0 0 0 1px rgba(255, 121, 20, .18),
-    0 0 32px rgba(255, 126, 28, .34),
-    inset -26px -12px 44px rgba(0, 0, 0, .24);
+  border: none;
+  box-shadow: 0 22px 36px rgba(0, 0, 0, .48), 0 0 26px rgba(255, 126, 28, .22);
   image-rendering: auto;
 }
 
