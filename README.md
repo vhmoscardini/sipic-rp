@@ -1,3 +1,4 @@
+teste
 # SIPIC-RP — versão local completa
 
 **Sistema Inteligente de Monitoramento e Predição de Ilhas de Calor Urbanas Baseado na Dinâmica Atmosférica de Vênus**, com foco em Ribeirão Preto, SP.
