@@ -240,6 +240,73 @@
   }
 
 
+  const errorConsoleState = { errors: [], max: 200 };
+
+  function logConsoleError(source, error, extra = "") {
+    const host = $("#errorConsole");
+    const message = error?.message || String(error || "Erro desconhecido");
+    const stack = error?.stack || "";
+    const detail = extra || stack;
+    const entry = {
+      time: new Date(),
+      source: String(source || "Aplicação"),
+      message,
+      detail,
+    };
+    errorConsoleState.errors.push(entry);
+    if (errorConsoleState.errors.length > errorConsoleState.max) {
+      errorConsoleState.errors.splice(0, errorConsoleState.errors.length - errorConsoleState.max);
+    }
+
+    if (host) {
+      const empty = $("#errorConsoleEmpty");
+      if (empty) empty.remove();
+      const row = document.createElement("div");
+      row.className = "console-entry";
+      row.innerHTML = `<span class="console-time">${entry.time.toLocaleTimeString("pt-BR")}</span><span class="console-source">${escapeHtml(entry.source)}</span><span class="console-message">${escapeHtml(entry.message)}</span>${entry.detail ? `<pre class="console-detail">${escapeHtml(entry.detail)}</pre>` : ""}`;
+      host.appendChild(row);
+      while (host.children.length > errorConsoleState.max) host.firstElementChild?.remove();
+      host.scrollTop = host.scrollHeight;
+    }
+
+    const count = $("#errorConsoleCount");
+    if (count) count.textContent = `${errorConsoleState.errors.length} ${errorConsoleState.errors.length === 1 ? "erro" : "erros"}`;
+
+    // Mantém também o console nativo do navegador sincronizado.
+    console.error(`[SIPIC-RP] ${entry.source}: ${entry.message}`, error);
+  }
+
+  function clearErrorConsole() {
+    errorConsoleState.errors.length = 0;
+    const host = $("#errorConsole");
+    if (host) host.innerHTML = `<div class="console-empty" id="errorConsoleEmpty">Nenhum erro registrado até o momento.</div>`;
+    setText("#errorConsoleCount", "0 erros");
+  }
+
+  function setupErrorMonitoring() {
+    window.addEventListener("error", (event) => {
+      logConsoleError(
+        "JavaScript",
+        event.error || new Error(event.message || "Erro de execução."),
+        `${event.filename || "arquivo desconhecido"}:${event.lineno || "?"}:${event.colno || "?"}`,
+      );
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      const reason = event.reason instanceof Error ? event.reason : new Error(String(event.reason ?? "Promise rejeitada sem motivo."));
+      logConsoleError("Promise", reason);
+    });
+
+    window.addEventListener("offline", () => {
+      logConsoleError("Rede", new Error("O navegador ficou offline."));
+    });
+
+    window.addEventListener("online", () => {
+      showToast("Conexão restaurada", "A conexão de rede foi restabelecida.", "success");
+    });
+  }
+
+
   function setText(selector, value) {
     const element = $(selector);
     if (element && value !== undefined && value !== null) element.textContent = String(value);
@@ -290,7 +357,11 @@
   }
 
   async function apiFetch(path, options = {}) {
-    if (!CONFIG.apiBaseUrl) throw new Error("A URL da API não foi configurada.");
+    if (!CONFIG.apiBaseUrl) {
+      const error = new Error("A URL da API não foi configurada.");
+      logConsoleError("API", error);
+      throw error;
+    }
     let lastError;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const controller = new AbortController();
@@ -302,6 +373,7 @@
         return payload;
       } catch (error) {
         lastError = error?.name === "AbortError" ? new Error("A API excedeu o tempo limite de resposta.") : error;
+        logConsoleError("API", lastError, `Rota: ${path} · tentativa ${attempt + 1}/2`);
         if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 700));
       } finally { clearTimeout(timeout); }
     }
@@ -424,6 +496,8 @@
 
     const sourceById = new Map((data?.sources || []).map((source) => [source.id, source]));
     setSourceBadge("#sourceWeatherStatus", sourceById.get("open_meteo_weather")?.status || (state.api.status === "error" ? "error" : "configured"));
+    setSourceBadge("#sourceOpenWeatherStatus", sourceById.get("openweather")?.status || "configured");
+    setSourceBadge("#sourceMeteomaticsStatus", sourceById.get("meteomatics")?.status || "configured");
     setSourceBadge("#sourceAirStatus", sourceById.get("open_meteo_air")?.status || (state.api.status === "error" ? "error" : "configured"));
     setSourceBadge("#sourceDatabaseStatus", sourceById.get("supabase")?.status || (health?.database?.status || "configured"));
     setSourceBadge("#sourceNasaStatus", state.api.solar?.ok ? (state.api.solar.stale ? "stale" : "online") : "configured");
@@ -431,6 +505,8 @@
     const sourceCount = data?.sources?.length || 0;
     const sourceOnline = (data?.sources || []).filter((source) => ["online", "reference_only"].includes(source.status)).length;
     setText("#sidebarSourcesOnline", sourceCount ? `${sourceOnline} / ${sourceCount}` : "--");
+    const preferred = data?.weather_observations?.preferred || "Open-Meteo";
+    setText("#telemetryWeatherSource", preferred);
     setText("#sidebarApiLatency", state.api.latencyMs !== null ? `${Math.round(state.api.latencyMs)} ms` : "--");
     setText("#sidebarLastCycle", data?.generated_at ? formatAge(data.generated_at) : "--");
     setText("#telemetryFreshness", data?.generated_at ? formatAge(data.generated_at) : "--");
@@ -473,7 +549,7 @@
     setText("#aqiValue", data.air_quality?.us_aqi ?? "N/D");
     setText("#aqiLabel", data.air_quality?.aqi_classification?.label || "não disponível");
     setText("#solarRadiationValue", current.shortwave_radiation_wm2 === null || current.shortwave_radiation_wm2 === undefined ? "N/D" : `${pt(current.shortwave_radiation_wm2, 0)} W/m²`);
-    setText("#solarRadiationLabel", current.weather_description || "Open-Meteo");
+    setText("#solarRadiationLabel", "Open-Meteo · radiação solar de onda curta");
     setText("#predictionConfidence", confidence ? `${pt(confidence, 1)}%` : "--%");
     setText("#modelConfidenceScore", confidence ? `${pt(confidence, 1)}%` : "--%");
     setText("#modelHorizon", `${data.forecast?.horizon_hours ?? 48} h`);
@@ -566,8 +642,9 @@
   async function loadSolarData() {
     try {
       state.api.solar = await apiFetch("/solar");
+      renderSolarData();
     } catch (error) {
-      console.warn("NASA POWER unavailable", error);
+      console.warn("Open-Meteo solar unavailable", error);
     } finally {
       renderApiStatus();
     }
@@ -963,6 +1040,19 @@
     `;
   }
 
+  function renderSolarData() {
+    const solar = state.api.solar;
+    if (!solar?.ok) return;
+    const earth = solar.earth || {};
+    const venus = solar.venus || {};
+    setText("#venusSolarFlux", Number.isFinite(Number(venus.solar_irradiance_wm2)) ? `≈ ${pt(venus.solar_irradiance_wm2, 0)} W/m²` : "N/D");
+    setText("#venusSolarDistance", Number.isFinite(Number(venus.distance_au)) ? `${pt(venus.distance_au, 3)} AU` : "N/D");
+    setText("#solarRadiationValue", Number.isFinite(Number(earth.shortwave_radiation_wm2)) ? `${pt(earth.shortwave_radiation_wm2, 0)} W/m²` : "N/D");
+    setText("#solarRadiationLabel", "Open-Meteo · radiação solar de onda curta");
+    const label = $("#venusSolarFlux")?.closest("dl")?.querySelector("div:last-child");
+    return earth;
+  }
+
   function createRadiativeData() {
     const x = Array.from({ length: 90 }, (_, i) => i);
     const venusTotal = x.map((i) => 0.4 + Math.sin(i / 8) * 0.22 + Math.exp(-((i - 70) ** 2) / 220) * 1.5 + Math.sin(i * 0.8) * 0.05);
@@ -990,19 +1080,24 @@
   }
 
   function renderOverviewCharts() {
+    const solarTimeline = state.api.solar?.timeline;
+    const liveSolar = Array.isArray(solarTimeline) ? solarTimeline.map(r => Number(r.shortwave_radiation_wm2)).filter(Number.isFinite) : [];
+    const venusReference = Array.from({ length: Math.max(2, liveSolar.length || 48) }, () => Number(state.api.solar?.venus?.solar_irradiance_wm2 || 2610));
     renderLineChart("#venusRadiativeChart", {
-      datasets: [
-        { name: "Total", data: radiativeData.venusTotal, color: COLORS.orange },
-        { name: "Absorção CO₂", data: radiativeData.venusAbs, color: COLORS.amber },
-        { name: "Nuvens", data: radiativeData.cloud, color: COLORS.blueBright },
-        { name: "Emissão térmica", data: radiativeData.thermal, color: COLORS.blue },
-      ],
+      datasets: liveSolar.length >= 2
+        ? [
+            { name: "Terra · Open-Meteo", data: liveSolar, color: COLORS.cyan },
+            { name: "Vênus · referência calculada", data: venusReference.slice(0, liveSolar.length), color: COLORS.orange },
+          ]
+        : [
+            { name: "Vênus · referência calculada", data: venusReference, color: COLORS.orange },
+          ],
       min: 0,
-      yDigits: 1,
-      xLabels: ["1", ...Array(88).fill(""), "100 μm"],
+      yDigits: 0,
+      xLabels: liveSolar.length >= 2 ? liveSolar.map((_, i) => i % 12 === 0 ? `${i}h` : "") : ["", "", "", "", ""],
       xTicks: 4,
-      ySuffix: "",
-      ariaLabel: "Curvas conceituais de transferência radiativa para Vênus",
+      ySuffix: " W/m²",
+      ariaLabel: "Comparação de radiação solar: Terra via Open-Meteo e Vênus por irradiância calculada",
     });
 
     renderLineChart("#urbanRadiativeChart", {
@@ -1696,6 +1791,8 @@
       ["#uhiIntensity", `+${pt(state.dashboard.uhi, 1)} °C`],
       ["#ndviValue", pt(state.dashboard.ndvi, 2)],
       ["#utciValue", `${pt(state.dashboard.utci, 1)} °C`],
+      ["#precipitationValue", state.api.dashboard?.current?.precipitation_1h_mm == null ? "N/D" : `${pt(state.api.dashboard.current.precipitation_1h_mm, 2)} mm`],
+      ["#weatherCondition", state.api.dashboard?.current?.weather_condition || "dados atuais"],
     ];
     assignments.forEach(([selector, value]) => setText(selector, value));
 
@@ -1784,9 +1881,8 @@
       ${kind !== "map" ? `<section><h2>Indicadores principais</h2><div class="cards"><article><span>Temperatura do ar</span><strong>${pt(indicators.air_temperature_c,1)} °C</strong></article><article><span>Temperatura aparente</span><strong>${pt(indicators.apparent_temperature_c,1)} °C</strong></article><article><span>Umidade relativa</span><strong>${Math.round(indicators.relative_humidity_percent)}%</strong></article><article><span>Ilha de calor urbana</span><strong>+${pt(indicators.urban_heat_island_c,1)} °C</strong></article></div></section><section class="chart-card"><h2>Comparativo visual de risco por setor</h2>${chartBars || '<p>Sem dados suficientes para o gráfico.</p>'}</section>` : ""}
       <section><h2>${kind === "map" ? "Setores monitorados" : "Dados detalhados por setor"}</h2><table><thead><tr><th>Setor</th><th>Ar</th><th>Superfície</th><th>ICU</th><th>NDVI</th><th>Risco</th></tr></thead><tbody>${rows}</tbody></table></section>
       ${kind === "complete" ? `<section><h2>Alertas e pontos de atenção</h2><ul>${alertHtml}</ul></section><section class="note"><h2>Como interpretar este relatório</h2><p><b>Risco:</b> quanto maior a pontuação, maior a prioridade de acompanhamento. <b>ICU:</b> indica a intensidade da ilha de calor urbana. <b>NDVI:</b> representa a presença relativa de vegetação. Os valores devem ser interpretados em conjunto com as fontes e condições do ciclo monitorado.</p></section>` : ""}
-      <section class="provenance"><h2>Qualidade e origem dos dados</h2><div><b>Status do ciclo:</b> ${escapePdfHtml(report.data_status)} &nbsp;•&nbsp; <b>Modelo:</b> ${escapePdfHtml(report.model_version)}</div><p>Fontes integradas: ${report.sources?.length ? escapePdfHtml(report.sources.map(src => typeof src === "string" ? src : src.name || src.id || "fonte").join(" • ")) : "Fontes disponíveis no ciclo carregado"}.</p></section>
       <footer><b>SIPIC-RP — Sistema de Inteligência e Predição de Indicadores Climáticos</b><br>${escapePdfHtml(report.disclaimer)}</footer></main></div>`;
-    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A4;margin:0}.report{padding:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#17212b;margin:0;background:#fff}.cover{height:297mm;padding:22mm;background:linear-gradient(145deg,#073e49,#0b5966 60%,#167987);color:#fff;position:relative;overflow:hidden}.cover:after{content:"";position:absolute;width:260mm;height:260mm;border:1px solid rgba(255,255,255,.14);border-radius:50%;right:-90mm;bottom:-110mm}.cover-logo,.brand{font-size:25px;font-weight:800;letter-spacing:.4px}.cover-logo span,.brand span{color:#f1a45c}.mark{color:#f1a45c!important}.cover-content{margin-top:72mm;max-width:150mm;position:relative;z-index:1}.cover-content p,.kicker{font-size:10px;font-weight:bold;letter-spacing:2px;color:#f1c18f}.cover h1{font-size:39px;line-height:1.1;margin:14px 0}.cover h3{font-size:16px;font-weight:400;line-height:1.6;color:#dceff1}.cover-line{height:3px;width:70mm;background:#f1a45c;margin:26px 0}.cover-foot{position:absolute;bottom:22mm;font-size:10px;line-height:1.7;color:#b9d9dc}header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #dce4e8;padding-bottom:14px}.meta{text-align:right;font-size:9px;color:#65727c;line-height:1.6}.hero{padding:24px 0 16px}.hero p{font-size:9px;font-weight:bold;letter-spacing:1.5px;color:#0b7180;margin:0 0 8px}.hero h1{font-size:26px;margin:0 0 8px}.hero div{color:#56636d;font-size:12px;line-height:1.5}h2{font-size:16px;margin:22px 0 11px}.cards,.exec-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.cards article,.exec-grid article{background:#f1f6f6;border-radius:9px;padding:12px}.cards span,.exec-grid span{display:block;color:#65727c;font-size:9px;margin-bottom:6px}.cards strong,.exec-grid strong{font-size:17px;color:#0b5966}.exec-grid{grid-template-columns:repeat(3,1fr)}.exec-grid p{font-size:9px;color:#65727c;line-height:1.4;margin:7px 0 0}.executive{padding-top:10px}.executive h2{font-size:23px;margin-top:8px}.recommend{margin-top:12px;background:#fff5e9;border-left:4px solid #e77b32;padding:12px;font-size:11px;line-height:1.5}.recommend p{margin:5px 0 0}.chart-card{margin-top:20px;padding:13px 15px;border:1px solid #e1eaec;border-radius:9px}.chart-card h2{margin-top:0}.barrow{display:grid;grid-template-columns:32mm 1fr 10mm;gap:7px;align-items:center;font-size:9px;margin:8px 0}.bar{height:9px;background:#e7eeee;border-radius:10px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#0b7180,#e77b32);border-radius:10px}.barrow b{text-align:right;color:#0b5966}table{width:100%;border-collapse:collapse;font-size:9px}th{text-align:left;background:#0b5966;color:#fff;padding:8px}td{padding:8px;border-bottom:1px solid #e4e9eb}tr:nth-child(even) td{background:#f7f9f9}small{color:#7b8790}ul{padding:0;list-style:none}li{padding:9px 11px;background:#fff7ed;border-left:4px solid #e77b32;margin-bottom:6px;font-size:10px}li span{display:block;color:#56636d;margin-top:3px}.note{background:#edf6f6;padding:13px;border-radius:8px;font-size:10px;line-height:1.6}.note h2{margin-top:0}.provenance{margin-top:18px;padding:12px 14px;border:1px solid #dce7e9;border-radius:8px;background:#fbfcfc;font-size:9px;line-height:1.6}.provenance h2{margin:0 0 7px}.provenance p{margin:6px 0 0;color:#65727c}footer{margin-top:24px;padding-top:11px;border-top:1px solid #dce4e8;color:#65727c;font-size:8px;line-height:1.5}.page-break{page-break-before:always}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.cover{page-break-after:always}.page-break{page-break-before:always}}</style></head><body>${body}<script>window.onload=()=>setTimeout(()=>window.print(),350);<\/script></body></html>`;
+    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A4;margin:0}.report{padding:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#17212b;margin:0;background:#fff}.cover{height:297mm;padding:22mm;background:linear-gradient(145deg,#073e49,#0b5966 60%,#167987);color:#fff;position:relative;overflow:hidden}.cover:after{content:"";position:absolute;width:260mm;height:260mm;border:1px solid rgba(255,255,255,.14);border-radius:50%;right:-90mm;bottom:-110mm}.cover-logo,.brand{font-size:25px;font-weight:800;letter-spacing:.4px}.cover-logo span,.brand span{color:#f1a45c}.mark{color:#f1a45c!important}.cover-content{margin-top:72mm;max-width:150mm;position:relative;z-index:1}.cover-content p,.kicker{font-size:10px;font-weight:bold;letter-spacing:2px;color:#f1c18f}.cover h1{font-size:39px;line-height:1.1;margin:14px 0}.cover h3{font-size:16px;font-weight:400;line-height:1.6;color:#dceff1}.cover-line{height:3px;width:70mm;background:#f1a45c;margin:26px 0}.cover-foot{position:absolute;bottom:22mm;font-size:10px;line-height:1.7;color:#b9d9dc}header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #dce4e8;padding-bottom:14px}.meta{text-align:right;font-size:9px;color:#65727c;line-height:1.6}.hero{padding:24px 0 16px}.hero p{font-size:9px;font-weight:bold;letter-spacing:1.5px;color:#0b7180;margin:0 0 8px}.hero h1{font-size:26px;margin:0 0 8px}.hero div{color:#56636d;font-size:12px;line-height:1.5}h2{font-size:16px;margin:22px 0 11px}.cards,.exec-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.cards article,.exec-grid article{background:#f1f6f6;border-radius:9px;padding:12px}.cards span,.exec-grid span{display:block;color:#65727c;font-size:9px;margin-bottom:6px}.cards strong,.exec-grid strong{font-size:17px;color:#0b5966}.exec-grid{grid-template-columns:repeat(3,1fr)}.exec-grid p{font-size:9px;color:#65727c;line-height:1.4;margin:7px 0 0}.executive{padding-top:10px}.executive h2{font-size:23px;margin-top:8px}.recommend{margin-top:12px;background:#fff5e9;border-left:4px solid #e77b32;padding:12px;font-size:11px;line-height:1.5}.recommend p{margin:5px 0 0}.chart-card{margin-top:20px;padding:13px 15px;border:1px solid #e1eaec;border-radius:9px}.chart-card h2{margin-top:0}.barrow{display:grid;grid-template-columns:32mm 1fr 10mm;gap:7px;align-items:center;font-size:9px;margin:8px 0}.bar{height:9px;background:#e7eeee;border-radius:10px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#0b7180,#e77b32);border-radius:10px}.barrow b{text-align:right;color:#0b5966}table{width:100%;border-collapse:collapse;font-size:9px}th{text-align:left;background:#0b5966;color:#fff;padding:8px}td{padding:8px;border-bottom:1px solid #e4e9eb}tr:nth-child(even) td{background:#f7f9f9}small{color:#7b8790}ul{padding:0;list-style:none}li{padding:9px 11px;background:#fff7ed;border-left:4px solid #e77b32;margin-bottom:6px;font-size:10px}li span{display:block;color:#56636d;margin-top:3px}.note{background:#edf6f6;padding:13px;border-radius:8px;font-size:10px;line-height:1.6}.note h2{margin-top:0}footer{margin-top:24px;padding-top:11px;border-top:1px solid #dce4e8;color:#65727c;font-size:8px;line-height:1.5}.page-break{page-break-before:always}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.cover{page-break-after:always}.page-break{page-break-before:always}}</style></head><body>${body}<script>window.onload=()=>setTimeout(()=>window.print(),350);<\/script></body></html>`;
     const win = window.open("", "_blank", "width=960,height=760");
     if (!win) { showToast("Não foi possível gerar o PDF", "Permita pop-ups para criar o relatório.", "warning"); return; }
     win.document.open(); win.document.write(html); win.document.close();
@@ -1931,34 +2027,13 @@
       showToast("URL copiada", "A URL base da API foi copiada.");
     });
 
-    $("#copySchemaButton")?.addEventListener("click", async () => {
-      const text = $("#schemaCode")?.innerText || "";
-      try {
-        await navigator.clipboard.writeText(text);
-      } catch {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand("copy");
-        textarea.remove();
-      }
-      showToast("Contrato copiado", "O exemplo JSON foi copiado para a área de transferência.");
-    });
+    $("#clearErrorConsoleButton")?.addEventListener("click", clearErrorConsole);
 
     $("#downloadJsonButton")?.addEventListener("click", () => openPdfReport("complete"));
 
     $("#downloadCsvButton")?.addEventListener("click", () => openPdfReport("sectors"));
 
-    // O botão principal deve gerar o documento completo em uma nova janela.
-    // Antes ele chamava window.print(), que imprimia a própria página do dashboard
-    // (normalmente vazia por causa das regras de impressão da interface).
-    $("#printReportButton")?.addEventListener("click", () => openPdfReport("complete"));
-
-    // Exportações da tabela de histórico.
-    $$('[data-report-action]').forEach((button) => {
-      button.addEventListener("click", () => openPdfReport(button.dataset.reportAction || "complete"));
-    });
+    $("#printReportButton")?.addEventListener("click", () => window.print());
 
     let resizeTimer;
     window.addEventListener("resize", () => {
@@ -1974,6 +2049,7 @@
   }
 
   function initialize() {
+    setupErrorMonitoring();
     renderCityScene();
     renderMiniCity();
     renderSparkline("#venusWave", createWaveData(1448, 150, 0.33), COLORS.orange);

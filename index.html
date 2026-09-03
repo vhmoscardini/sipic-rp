@@ -150,11 +150,12 @@
                   </div>
 
                   <dl class="hero-metrics">
-                    <div class="metric-emphasis"><dt>Temperatura superficial</dt><dd>464 °C</dd></div>
+                    <div class="metric-emphasis"><dt>Temperatura superficial</dt><dd id="venusSurfaceTemperature">464 °C</dd></div>
                     <div><dt>Pressão atmosférica</dt><dd>≈ 92 bar</dd></div>
                     <div><dt>Concentração de CO₂</dt><dd>≈ 96,5%</dd></div>
-                    <div><dt>Fluxo solar no topo</dt><dd>≈ 2.613 W/m²</dd></div>
+                    <div><dt>Fluxo solar no topo</dt><dd id="venusSolarFlux">≈ 2.610 W/m²</dd></div>
                     <div><dt>Albedo planetário</dt><dd>≈ 0,75</dd></div>
+                    <div><dt>Distância média ao Sol</dt><dd id="venusSolarDistance">0,723 AU</dd></div>
                     <div><dt>Uso no projeto</dt><dd>Analogia radiativa</dd></div>
                   </dl>
                 </div>
@@ -189,6 +190,8 @@
                     <div><dt>Temperatura de superfície</dt><dd id="surfaceTemperature">49,2 °C</dd></div>
                     <div><dt>Umidade relativa</dt><dd id="relativeHumidity">31%</dd></div>
                     <div><dt>Velocidade do vento</dt><dd id="windSpeed">1,8 m/s</dd></div>
+                    <div><dt>Precipitação · última 1h</dt><dd id="precipitationValue">N/D</dd></div>
+                    <div><dt>Condição atual</dt><dd id="weatherCondition">dados atuais</dd></div>
                     <div><dt>Ilha de calor estimada</dt><dd class="heat-value" id="uhiIntensity">+5,7 °C</dd></div>
                     <div><dt>Índice de vegetação</dt><dd id="ndviValue">0,34</dd></div>
                   </dl>
@@ -208,7 +211,7 @@
                 <div class="panel-heading compact">
                   <div>
                     <h3>Transferência radiativa — Vênus</h3>
-                    <p>Curvas espectrais normalizadas</p>
+                    <p>Fluxo solar real da Terra + referência calculada para Vênus</p>
                   </div>
                   <span class="model-label">DISORT · CONCEITUAL</span>
                 </div>
@@ -665,14 +668,24 @@
             <div><span>METEOROLOGIA AO VIVO</span><h3>Open-Meteo Forecast API</h3><p>Temperatura, umidade, vento, pressão, chuva e radiação com atualização automática e cache controlado.</p></div>
             <span class="source-status live" id="sourceWeatherStatus">CONECTANDO</span>
           </article>
+          <article class="panel data-source-card" data-source-card="openweather">
+            <div class="source-icon weather"><svg class="icon"><use href="#i-cloud"></use></svg></div>
+            <div><span>CONDIÇÕES ATUAIS</span><h3>OpenWeather Current Weather</h3><p>Condições atuais, vento, rajadas, nebulosidade e precipitação observada na resposta da API.</p></div>
+            <span class="source-status live" id="sourceOpenWeatherStatus">CONFIGURADO</span>
+          </article>
+          <article class="panel data-source-card" data-source-card="meteomatics">
+            <div class="source-icon satellite"><svg class="icon"><use href="#i-satellite"></use></svg></div>
+            <div><span>OBSERVAÇÃO DE ESTAÇÃO</span><h3>Meteomatics · mix-obs</h3><p>Busca a observação disponível da estação meteorológica mais próxima de Ribeirão Preto, sem interpolação temporal.</p></div>
+            <span class="source-status live" id="sourceMeteomaticsStatus">CONFIGURADO</span>
+          </article>
           <article class="panel data-source-card" data-source-card="open_meteo_air">
             <div class="source-icon local"><svg class="icon"><use href="#i-air"></use></svg></div>
             <div><span>QUALIDADE DO AR</span><h3>CAMS via Open-Meteo</h3><p>PM₂.₅, PM₁₀, O₃, NO₂, CO, SO₂ e IQAr em escala regional de modelo atmosférico.</p></div>
             <span class="source-status live" id="sourceAirStatus">CONECTANDO</span>
           </article>
-          <article class="panel data-source-card" data-source-card="nasa_power">
+          <article class="panel data-source-card" data-source-card="radiation_open_meteo">
             <div class="source-icon satellite"><svg class="icon"><use href="#i-satellite"></use></svg></div>
-            <div><span>RADIAÇÃO E CLIMA</span><h3>NASA POWER API</h3><p>Série diária de radiação solar, temperatura, umidade, vento e precipitação para contexto climático.</p></div>
+            <div><span>RADIAÇÃO E CLIMA</span><h3>Open-Meteo · Radiação</h3><p>Radiação solar de onda curta, direta, difusa, DNI e radiação terrestre para o ponto de Ribeirão Preto.</p></div>
             <span class="source-status live" id="sourceNasaStatus">CONECTANDO</span>
           </article>
           <article class="panel data-source-card" data-source-card="supabase">
@@ -737,20 +750,20 @@
             </div>
           </article>
 
-          <article class="panel schema-card">
-            <div class="panel-heading"><div><h3>Exemplo de contrato de dados</h3><p>Estrutura usada pela API de ingestão</p></div><button class="small-button" id="copySchemaButton"><svg class="icon"><use href="#i-copy"></use></svg>Copiar</button></div>
-            <pre id="schemaCode"><code>{
-  "station_code": "RP-CENTRO-04",
-  "observed_at": "2026-08-25T15:00:00-03:00",
-  "source": "sensor_escolar_01",
-  "quality_score": 95,
-  "measurements": {
-    "air_temperature_c": 34.6,
-    "relative_humidity_pct": 31,
-    "wind_speed_ms": 1.8,
-    "shortwave_radiation_wm2": 812
-  }
-}</code></pre>
+          <article class="panel error-console-card">
+            <div class="panel-heading">
+              <div>
+                <h3>Console de erros</h3>
+                <p>Registro em tempo real de falhas da API, fontes, JavaScript e requisições.</p>
+              </div>
+              <div class="console-actions">
+                <span class="console-count" id="errorConsoleCount">0 erros</span>
+                <button class="small-button" id="clearErrorConsoleButton"><svg class="icon"><use href="#i-trash"></use></svg>Limpar</button>
+              </div>
+            </div>
+            <div class="error-console" id="errorConsole" role="log" aria-live="polite" aria-label="Console de erros">
+              <div class="console-empty" id="errorConsoleEmpty">Nenhum erro registrado até o momento.</div>
+            </div>
           </article>
         </div>
       </section>

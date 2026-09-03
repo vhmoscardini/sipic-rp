@@ -63,6 +63,90 @@ const OPEN_METEO_WEATHER_URL = "https://api.open-meteo.com/v1/forecast";
 const OPEN_METEO_AIR_URL = "https://air-quality-api.open-meteo.com/v1/air-quality";
 const DIRECT_SOURCE_TIMEOUT_MS = Math.max(3_000, Number(process.env.DIRECT_SOURCE_TIMEOUT_MS || 9_000));
 
+const OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather";
+const METEOMATICS_URL = "https://api.meteomatics.com";
+
+function finiteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseMeteomatics(payload) {
+  const out = {};
+  for (const item of payload?.data || []) {
+    const parameter = item?.parameter;
+    const value = item?.coordinates?.[0]?.dates?.[0]?.value;
+    if (parameter) out[parameter] = finiteNumber(value);
+  }
+  return out;
+}
+
+async function fetchOpenWeatherCurrent() {
+  const key = String(process.env.OPENWEATHER_API_KEY || "").trim();
+  if (!key) return { configured: false, status: "configured", message: "OPENWEATHER_API_KEY não configurada." };
+  const params = new URLSearchParams({
+    lat: String(RIBEIRAO_PRETO.latitude), lon: String(RIBEIRAO_PRETO.longitude),
+    appid: key, units: "metric", lang: "pt_br",
+  });
+  const payload = await fetchJsonWithTimeout(`${OPENWEATHER_URL}?${params}`);
+  const rain = finiteNumber(payload?.rain?.["1h"]);
+  const snow = finiteNumber(payload?.snow?.["1h"]);
+  return {
+    configured: true, status: "online", source: "OpenWeather",
+    observed_at: payload?.dt ? new Date(Number(payload.dt) * 1000).toISOString() : null,
+    temperature_c: finiteNumber(payload?.main?.temp),
+    apparent_temperature_c: finiteNumber(payload?.main?.feels_like),
+    humidity_pct: finiteNumber(payload?.main?.humidity),
+    pressure_hpa: finiteNumber(payload?.main?.pressure),
+    wind_speed_ms: finiteNumber(payload?.wind?.speed),
+    wind_direction_deg: finiteNumber(payload?.wind?.deg),
+    wind_gust_ms: finiteNumber(payload?.wind?.gust),
+    cloud_cover_pct: finiteNumber(payload?.clouds?.all),
+    precipitation_1h_mm: rain ?? snow,
+    condition: payload?.weather?.[0]?.description || payload?.weather?.[0]?.main || null,
+    weather_code: finiteNumber(payload?.weather?.[0]?.id),
+    icon: payload?.weather?.[0]?.icon || null,
+  };
+}
+
+async function fetchMeteomaticsCurrent() {
+  const user = String(process.env.METEOMATICS_USERNAME || "").trim();
+  const password = String(process.env.METEOMATICS_PASSWORD || "").trim();
+  if (!user || !password) return { configured: false, status: "configured", message: "METEOMATICS_USERNAME/PASSWORD não configurados." };
+  const now = new Date();
+  const start = new Date(Math.floor(now.getTime() / 3600000) * 3600000);
+  const end = new Date(start.getTime() + 3600000);
+  const iso = (d) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const range = `${iso(start)}--${iso(end)}:PT1H`;
+  const parameters = "t_2m:C,relative_humidity_2m:p,wind_speed_10m:ms,wind_dir_10m:d,wind_gusts_10m_1h:ms,precip_1h:mm,global_rad:W";
+  const url = `${METEOMATICS_URL}/${range}/${parameters}/${RIBEIRAO_PRETO.latitude},${RIBEIRAO_PRETO.longitude}/json?source=mix-obs&temporal_interpolation=none&on_invalid=fill_with_invalid`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DIRECT_SOURCE_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { headers: { Accept: "application/json", Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}` }, signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    const values = parseMeteomatics(payload);
+    return {
+      configured: true, status: "online", source: "Meteomatics",
+      observed_at: payload?.data?.[0]?.coordinates?.[0]?.dates?.[0]?.date || null,
+      temperature_c: values["t_2m:C"], humidity_pct: values["relative_humidity_2m:p"],
+      wind_speed_ms: values["wind_speed_10m:ms"], wind_direction_deg: values["wind_dir_10m:d"],
+      wind_gust_ms: values["wind_gusts_10m_1h:ms"], precipitation_1h_mm: values["precip_1h:mm"],
+      global_radiation_wm2: values["global_rad:W"],
+      interpolation: "none", source_mode: "mix-obs (estação mais próxima)",
+    };
+  } finally { clearTimeout(timer); }
+}
+
+async function directWeatherSources() {
+  const results = await Promise.allSettled([fetchOpenWeatherCurrent(), fetchMeteomaticsCurrent()]);
+  const openWeather = results[0].status === "fulfilled" ? results[0].value : { configured: true, status: "error", message: String(results[0].reason?.message || results[0].reason) };
+  const meteomatics = results[1].status === "fulfilled" ? results[1].value : { configured: true, status: "error", message: String(results[1].reason?.message || results[1].reason) };
+  return { openWeather, meteomatics };
+}
+
+
 async function fetchJsonWithTimeout(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DIRECT_SOURCE_TIMEOUT_MS);
@@ -86,8 +170,8 @@ async function directScientificDashboard() {
   const weatherParams = new URLSearchParams({
     latitude: String(RIBEIRAO_PRETO.latitude), longitude: String(RIBEIRAO_PRETO.longitude),
     timezone: RIBEIRAO_PRETO.timezone,
-    current: "temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code",
-    hourly: "temperature_2m,apparent_temperature,relative_humidity_2m",
+    current: "temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,terrestrial_radiation",
+    hourly: "temperature_2m,apparent_temperature,relative_humidity_2m,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,terrestrial_radiation",
     forecast_days: "3",
   });
   const airParams = new URLSearchParams({
@@ -95,9 +179,10 @@ async function directScientificDashboard() {
     timezone: RIBEIRAO_PRETO.timezone,
     current: "pm2_5,us_aqi",
   });
-  const [weatherResult, airResult] = await Promise.allSettled([
+  const [weatherResult, airResult, sourceResult] = await Promise.allSettled([
     fetchJsonWithTimeout(`${OPEN_METEO_WEATHER_URL}?${weatherParams}`),
     fetchJsonWithTimeout(`${OPEN_METEO_AIR_URL}?${airParams}`),
+    directWeatherSources(),
   ]);
   if (weatherResult.status !== "fulfilled" && airResult.status !== "fulfilled") throw new Error("As fontes meteorológica e de qualidade do ar não responderam.");
 
@@ -105,18 +190,34 @@ async function directScientificDashboard() {
   const now = new Date();
   const weather = weatherResult.status === "fulfilled" ? weatherResult.value : null;
   const air = airResult.status === "fulfilled" ? airResult.value : null;
+  const external = sourceResult.status === "fulfilled" ? sourceResult.value : { openWeather: { status: "error" }, meteomatics: { status: "error" } };
   const current = weather?.current || {};
+  const obs = external.meteomatics?.status === "online" ? external.meteomatics : external.openWeather?.status === "online" ? external.openWeather : null;
   const airCurrent = air?.current || {};
   const realAir = Number(current.temperature_2m);
   const realHumidity = Number(current.relative_humidity_2m);
   const apparent = Number(current.apparent_temperature);
   const windKmh = Number(current.wind_speed_10m);
+  const shortwave = Number(current.shortwave_radiation);
+  const directRadiation = Number(current.direct_radiation);
+  const diffuseRadiation = Number(current.diffuse_radiation);
+  const dni = Number(current.direct_normal_irradiance);
+  const terrestrial = Number(current.terrestrial_radiation);
+  const observedTemp = finiteNumber(obs?.temperature_c);
+  const observedHumidity = finiteNumber(obs?.humidity_pct);
+  const observedWind = finiteNumber(obs?.wind_speed_ms);
+  const observedPrecip = finiteNumber(obs?.precipitation_1h_mm);
 
   if (Number.isFinite(realAir)) {
     const surfaceDelta = Math.max(2.0, Number(base.current.surface_temperature_c) - Number(base.current.air_temperature_c));
     base.current.air_temperature_c = realAir;
     base.current.surface_temperature_c = Number((realAir + surfaceDelta).toFixed(1));
     base.current.apparent_temperature_c = Number.isFinite(apparent) ? apparent : Number((realAir + 1.2).toFixed(1));
+    base.current.shortwave_radiation_wm2 = Number.isFinite(shortwave) ? shortwave : null;
+    base.current.direct_radiation_wm2 = Number.isFinite(directRadiation) ? directRadiation : null;
+    base.current.diffuse_radiation_wm2 = Number.isFinite(diffuseRadiation) ? diffuseRadiation : null;
+    base.current.direct_normal_irradiance_wm2 = Number.isFinite(dni) ? dni : null;
+    base.current.terrestrial_radiation_wm2 = Number.isFinite(terrestrial) ? terrestrial : null;
     if (Number.isFinite(realHumidity)) base.current.relative_humidity_pct = Math.round(realHumidity);
     if (Number.isFinite(windKmh)) base.current.wind_speed_ms = Number((windKmh / 3.6).toFixed(1));
     base.sectors = base.sectors.map((sector, index) => {
@@ -124,13 +225,29 @@ async function directScientificDashboard() {
       return { ...sector, air_temperature_c: Number((realAir + offset).toFixed(1)), surface_temperature_c: Number((realAir + surfaceDelta + offset + sector.urban_heat_island_c * .32).toFixed(1)), relative_humidity_pct: Number.isFinite(realHumidity) ? Math.round(realHumidity) : sector.relative_humidity_pct };
     });
   }
+  if (Number.isFinite(observedTemp)) {
+    base.current.air_temperature_c = observedTemp;
+    base.current.apparent_temperature_c = finiteNumber(obs?.apparent_temperature_c) ?? base.current.apparent_temperature_c;
+  }
+  if (Number.isFinite(observedHumidity)) base.current.relative_humidity_pct = Math.round(observedHumidity);
+  if (Number.isFinite(observedWind)) base.current.wind_speed_ms = Number(observedWind.toFixed(1));
+  base.current.precipitation_1h_mm = Number.isFinite(observedPrecip) ? Number(observedPrecip.toFixed(2)) : null;
+  base.current.weather_condition = obs?.condition || null;
+  base.current.wind_direction_deg = finiteNumber(obs?.wind_direction_deg);
+  base.current.wind_gust_ms = finiteNumber(obs?.wind_gust_ms);
+  base.weather_observations = { openweather: external.openWeather, meteomatics: external.meteomatics, preferred: obs?.source || "Open-Meteo" };
   const hourly = weather?.hourly;
   if (hourly?.time?.length) {
     const timeline = hourly.time.slice(0, 48).map((time, index) => {
       const t = Number(hourly.temperature_2m?.[index]);
       const a = Number(hourly.apparent_temperature?.[index]);
+      const sw = Number(hourly.shortwave_radiation?.[index]);
+      const direct = Number(hourly.direct_radiation?.[index]);
+      const diffuse = Number(hourly.diffuse_radiation?.[index]);
+      const dniH = Number(hourly.direct_normal_irradiance?.[index]);
+      const terr = Number(hourly.terrestrial_radiation?.[index]);
       const valid = Number.isFinite(t) ? t : base.forecast.city_timeline[index]?.air_temperature_c;
-      return { ...base.forecast.city_timeline[index], timestamp: new Date(`${time}:00`).toISOString(), air_temperature_c: valid, apparent_temperature_c: Number.isFinite(a) ? a : valid, surface_temperature_c: Number((valid + 4.0).toFixed(1)) };
+      return { ...base.forecast.city_timeline[index], timestamp: new Date(`${time}:00`).toISOString(), air_temperature_c: valid, apparent_temperature_c: Number.isFinite(a) ? a : valid, surface_temperature_c: Number((valid + 4.0).toFixed(1)), shortwave_radiation_wm2: Number.isFinite(sw) ? sw : null, direct_radiation_wm2: Number.isFinite(direct) ? direct : null, diffuse_radiation_wm2: Number.isFinite(diffuse) ? diffuse : null, direct_normal_irradiance_wm2: Number.isFinite(dniH) ? dniH : null, terrestrial_radiation_wm2: Number.isFinite(terr) ? terr : null };
     });
     base.forecast.city_timeline = timeline;
   }
@@ -142,12 +259,44 @@ async function directScientificDashboard() {
   base.data_status = "live_direct_sources";
   base.generated_at = now.toISOString();
   base.sources = [
-    { id: "open_meteo_weather", name: "Open-Meteo Forecast API", status: weather ? "online" : "degraded", detail: weather ? "Dados meteorológicos atualizados" : "Usando referência local" },
+    { id: "open_meteo_weather", name: "Open-Meteo Forecast API", status: weather ? "online" : "degraded", detail: "Modelo meteorológico e radiação" },
+    { id: "openweather", name: "OpenWeather Current Weather", status: external.openWeather.status, detail: external.openWeather.status === "online" ? "Condições atuais, vento e chuva" : external.openWeather.message || "API key não configurada" },
+    { id: "meteomatics", name: "Meteomatics · mix-obs", status: external.meteomatics.status, detail: external.meteomatics.status === "online" ? "Observação de estação mais próxima" : external.meteomatics.message || "Credenciais não configuradas" },
     { id: "open_meteo_air", name: "CAMS via Open-Meteo", status: air ? "online" : "degraded", detail: air ? "Qualidade do ar atualizada" : "Usando referência local" },
     { id: "supabase", name: "Modelo local", status: "online", detail: "Cálculo e apresentação local" },
   ];
   base.scientific_disclaimer = weather || air ? "Dados meteorológicos e de qualidade do ar obtidos diretamente de fontes públicas; indicadores urbanos são calculados pelo modelo do SIPIC-RP." : base.scientific_disclaimer;
   return base;
+}
+
+async function directSolarData() {
+  const params = new URLSearchParams({
+    latitude: String(RIBEIRAO_PRETO.latitude),
+    longitude: String(RIBEIRAO_PRETO.longitude),
+    timezone: RIBEIRAO_PRETO.timezone,
+    current: "shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,terrestrial_radiation",
+    hourly: "shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,terrestrial_radiation",
+    forecast_days: "2",
+  });
+  const weather = await fetchJsonWithTimeout(`${OPEN_METEO_WEATHER_URL}?${params}`);
+  const c = weather.current || {};
+  const hourly = weather.hourly || {};
+  const earth = {
+    shortwave_radiation_wm2: Number.isFinite(Number(c.shortwave_radiation)) ? Number(c.shortwave_radiation) : null,
+    direct_radiation_wm2: Number.isFinite(Number(c.direct_radiation)) ? Number(c.direct_radiation) : null,
+    diffuse_radiation_wm2: Number.isFinite(Number(c.diffuse_radiation)) ? Number(c.diffuse_radiation) : null,
+    direct_normal_irradiance_wm2: Number.isFinite(Number(c.direct_normal_irradiance)) ? Number(c.direct_normal_irradiance) : null,
+    terrestrial_radiation_wm2: Number.isFinite(Number(c.terrestrial_radiation)) ? Number(c.terrestrial_radiation) : null,
+    time: c.time || null,
+  };
+  const venusDistanceAu = 0.723332;
+  const solarConstant = 1367.7;
+  const venusIrradiance = solarConstant / (venusDistanceAu * venusDistanceAu);
+  const timeline = (hourly.time || []).slice(0, 48).map((time, i) => ({
+    time, shortwave_radiation_wm2: Number.isFinite(Number(hourly.shortwave_radiation?.[i])) ? Number(hourly.shortwave_radiation[i]) : null,
+    terrestrial_radiation_wm2: Number.isFinite(Number(hourly.terrestrial_radiation?.[i])) ? Number(hourly.terrestrial_radiation[i]) : null,
+  }));
+  return { ok: true, stale: false, source: "Open-Meteo", generated_at: new Date().toISOString(), location: { ...RIBEIRAO_PRETO }, earth, venus: { distance_au: venusDistanceAu, solar_irradiance_wm2: Number(venusIrradiance.toFixed(1)), type: "calculated_from_mean_solar_distance", formula: "1367.7 / r²" }, timeline };
 }
 
 async function sendDirectScientificFallback(response, url, reason) {
@@ -220,7 +369,12 @@ function localReferencePayload(endpoint) {
   const stations = sectors.map((sector, index) => ({ code: `VIRTUAL-${String(index + 1).padStart(2, "0")}`, name: sector.name, status: "online", station_type: "virtual_grid", last_seen_at: now.toISOString() }));
 
   if (endpoint === "health") return { ok: true, service: "SIPIC-RP local reference gateway", api_version: "1.2.0", model_version: "sipic-hybrid-1.1.0", database: { status: "reference_only", sectors: sectors.length, stations: stations.length }, cache: [], generated_at: now.toISOString(), mode: "local_reference" };
-  if (endpoint === "solar") return { ok: true, stale: true, source: "local_reference", generated_at: now.toISOString(), message: "Referência local utilizada enquanto a fonte remota está indisponível." };
+  if (endpoint === "solar") return {
+    ok: true, stale: true, source: "local_reference", generated_at: now.toISOString(),
+    earth: { shortwave_radiation_wm2: null, terrestrial_radiation_wm2: null },
+    venus: { distance_au: 0.723, solar_irradiance_wm2: 2610, type: "calculated_reference" },
+    message: "Open-Meteo indisponível; sem valor solar terrestre em tempo real."
+  };
   if (endpoint === "analytics") return { ok: true, count: 48, observations: timeline.map((row, i) => ({ observed_at: row.timestamp, air_temperature_c: row.air_temperature_c, surface_temperature_c: row.surface_temperature_c, urban_heat_island_c: Number((2.2 + Math.sin(i / 7) * .5).toFixed(1)) })), source: "local_reference" };
   if (endpoint === "dashboard" || endpoint === "") return {
     ok: true, data_status: "local_reference", generated_at: now.toISOString(), model_version: "sipic-hybrid-1.1.0",
@@ -316,6 +470,16 @@ async function proxyApi(request, response, url) {
   }
 
   const relative = url.pathname.replace(/^\/api\/?/, "");
+  if (relative === "solar") {
+    try {
+      const solar = await directSolarData();
+      sendJson(response, 200, solar, { "X-SIPIC-Mode": "OPEN-METEO-SOLAR" });
+    } catch (error) {
+      sendLocalReference(response, url, `open_meteo_solar_${error.message}`);
+    }
+    return;
+  }
+
   const upstreamUrl = new URL(`${UPSTREAM_API}/${relative}`);
   for (const [key, value] of url.searchParams.entries()) upstreamUrl.searchParams.append(key, value);
 

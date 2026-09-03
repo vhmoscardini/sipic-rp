@@ -888,7 +888,7 @@ svg {
   display: grid;
   place-items: center;
   min-height: 255px;
-  overflow: hidden;
+  overflow: visible;
   isolation: isolate;
 }
 .venus-visual::after {
@@ -915,17 +915,19 @@ svg {
   position: relative;
   z-index: 4;
   display: block;
-  /* Mantém o planeta totalmente contido no painel, com margem visual. */
-  width: min(86%, 285px);
-  max-height: 235px;
+  width: min(104%, 340px);
   aspect-ratio: 1;
   object-fit: cover;
   object-position: 48% 52%;
   border-radius: 50%;
-  transform: none;
+  transform: translate(-2%, -1%) scale(1.02);
   transform-origin: center;
-  border: none;
-  box-shadow: 0 22px 36px rgba(0, 0, 0, .48), 0 0 26px rgba(255, 126, 28, .22);
+  border: 2px solid rgba(255, 198, 93, .72);
+  box-shadow:
+    0 22px 36px rgba(0, 0, 0, .48),
+    0 0 0 1px rgba(255, 121, 20, .18),
+    0 0 32px rgba(255, 126, 28, .34),
+    inset -26px -12px 44px rgba(0, 0, 0, .24);
   image-rendering: auto;
 }
 
@@ -4194,3 +4196,115 @@ tbody tr:hover {
 .urban-block { fill: rgba(130, 157, 168, .18); stroke: rgba(167, 196, 205, .10); stroke-width: .7; }
 #heatMapSvg .map-road { filter: drop-shadow(0 1px 1px rgba(0,0,0,.45)); }
 #heatMapSvg .city-boundary { filter: drop-shadow(0 0 8px rgba(44,154,207,.2)); }
+
+/* Console de erros — substitui o contrato de ingestão */
+.error-console-card {
+  grid-column: 1 / -1;
+  overflow: hidden;
+}
+
+.console-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.console-count {
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 90, 79, 0.28);
+  border-radius: 4px;
+  color: var(--red);
+  background: rgba(255, 90, 79, 0.07);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.error-console {
+  min-height: 230px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 8px;
+  background: #03070a;
+  border-top: 1px solid var(--border-soft);
+  font-family: var(--font-mono);
+  scrollbar-width: thin;
+}
+
+.console-empty {
+  display: grid;
+  min-height: 210px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.console-entry {
+  display: grid;
+  grid-template-columns: 76px 92px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,.045);
+  color: #dbe7eb;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.console-entry:hover {
+  background: rgba(255, 90, 79, .045);
+}
+
+.console-time {
+  color: #6e8792;
+}
+
+.console-source {
+  color: var(--red);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.console-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.console-detail {
+  grid-column: 3;
+  margin: 4px 0 0;
+  padding: 7px 8px;
+  overflow: auto;
+  max-height: 110px;
+  border-left: 2px solid rgba(255, 90, 79, .3);
+  color: #8fa6af;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .console-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .console-entry {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .console-source {
+    grid-column: 2;
+  }
+
+  .console-message,
+  .console-detail {
+    grid-column: 1 / -1;
+  }
+}
+
+@media print {
+  .error-console-card {
+    display: none !important;
+  }
+}

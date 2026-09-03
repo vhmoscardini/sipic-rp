@@ -11,6 +11,8 @@ Esta edição foi preparada para funcionar **sem Vercel**. O frontend é servido
 - Dashboard responsivo para desktop, tablet e telemóvel.
 - Atualização automática dos dados a cada 10 minutos.
 - Meteorologia atual e previsão horária via Open-Meteo.
+- Condições atuais opcionais via OpenWeather (API key no backend).
+- Observações de estação opcionais via Meteomatics `mix-obs` (credenciais no backend).
 - Qualidade do ar via Open-Meteo Air Quality/CAMS.
 - Série solar e meteorológica via NASA POWER.
 - Banco PostgreSQL/Supabase com histórico, cache, previsões, alertas e relatórios.
@@ -200,3 +202,8 @@ Depois altere `SIPIC_API_BASE_URL` no `.env` local.
 
 ## Fontes meteorológicas e qualidade do ar
 A aplicação utiliza o gateway local (`/api`) para evitar problemas de CORS. Se a Edge Function estiver indisponível ou reportar falha nas fontes, o gateway consulta diretamente a **Open-Meteo Forecast API** e a **CAMS via Open-Meteo** e atualiza os status no painel. Execute o projeto pelo servidor Node (`npm start` ou `iniciar.bat`); abrir o `index.html` diretamente no navegador não ativa o gateway.
+
+
+### OpenWeather e Meteomatics
+
+O gateway consulta as duas fontes em paralelo quando as credenciais estiverem configuradas. O painel prioriza **Meteomatics `mix-obs`** para observação de estação, depois **OpenWeather** para condições atuais e mantém **Open-Meteo** como fonte de previsão/modelagem e radiação. Se as chaves não forem configuradas, o projeto continua funcionando com Open-Meteo. Nunca coloque essas credenciais em `app.js`, `config.js` ou `index.html`.
