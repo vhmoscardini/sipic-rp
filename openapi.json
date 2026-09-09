@@ -6,36 +6,19 @@
     "description": "API acadêmica de monitoramento e predição de ilhas de calor urbanas em Ribeirão Preto."
   },
   "servers": [
-    {
-      "url": "https://pzwtoksbbfvgsnwunzri.supabase.co/functions/v1/sipic-api"
-    }
+    { "url": "https://pzwtoksbbfvgsnwunzri.supabase.co/functions/v1/sipic-api" }
   ],
   "paths": {
     "/health": { "get": { "summary": "Saúde da API", "responses": { "200": { "description": "Estado do serviço" } } } },
-    "/dashboard": {
-      "get": {
-        "summary": "Payload integrado do dashboard",
-        "parameters": [
-          { "name": "refresh", "in": "query", "required": false, "schema": { "type": "boolean" } }
-        ],
-        "responses": { "200": { "description": "Ciclo integrado" } }
-      }
-    },
+    "/dashboard": { "get": { "summary": "Payload integrado do dashboard", "parameters": [{ "name": "refresh", "in": "query", "required": false, "schema": { "type": "boolean" } }], "responses": { "200": { "description": "Ciclo integrado" } } } },
     "/weather": { "get": { "summary": "Meteorologia atual e horária", "responses": { "200": { "description": "Dados normalizados" } } } },
     "/air-quality": { "get": { "summary": "Qualidade do ar", "responses": { "200": { "description": "CAMS/Open-Meteo" } } } },
     "/solar": { "get": { "summary": "Série diária NASA POWER", "responses": { "200": { "description": "Dados POWER" } } } },
     "/sectors": { "get": { "summary": "Setores experimentais", "responses": { "200": { "description": "Catálogo de setores" } } } },
     "/sensors": { "get": { "summary": "Inventário de fontes e estações", "responses": { "200": { "description": "Estado da rede" } } } },
-    "/analytics": {
-      "get": {
-        "summary": "Histórico persistido",
-        "parameters": [
-          { "name": "hours", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 6, "maximum": 720, "default": 72 } }
-        ],
-        "responses": { "200": { "description": "Observações históricas" } }
-      }
-    },
-    "/report": { "get": { "summary": "Gerar relatório operacional", "responses": { "200": { "description": "Relatório persistido" } } } },
-    "/openapi": { "get": { "summary": "Contrato OpenAPI", "responses": { "200": { "description": "Documento OpenAPI" } } } }
+    "/analytics": { "get": { "summary": "Histórico persistido", "parameters": [{ "name": "hours", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 6, "maximum": 720, "default": 72 } }], "responses": { "200": { "description": "Observações históricas" } } } },
+    "/report": { "get": { "summary": "Gerar relatório operacional", "responses": { "200": { "description": "Relatório operacional" } } } },
+    "/openapi": { "get": { "summary": "Contrato OpenAPI", "responses": { "200": { "description": "Documento OpenAPI" } } } },
+    "/weather-comparison": { "get": { "summary": "Comparar Open-Meteo e OpenWeather", "description": "Compara fontes meteorológicas independentes para o mesmo ponto geográfico e retorna diferenças absolutas e relativas.", "responses": { "200": { "description": "Comparação concluída" }, "503": { "description": "Uma ou ambas as fontes indisponíveis" } } } }
   }
 }
