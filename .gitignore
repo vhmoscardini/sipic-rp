@@ -1,19 +1,11 @@
-# Environment and secrets
+.DS_Store
+Thumbs.db
 .env
 .env.*
 !.env.example
-.openweather-key
-
-# Node
 node_modules/
-npm-debug.log*
+.supabase/
+*.log
 
-# Python
-__pycache__/
-*.py[cod]
-
-# OS / editor
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
+.openweather-key
+.env
