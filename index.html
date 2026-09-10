@@ -683,6 +683,16 @@
             <div><span>QUALIDADE DO AR</span><h3>CAMS via Open-Meteo</h3><p>PM₂.₅, PM₁₀, O₃, NO₂, CO, SO₂ e IQAr em escala regional de modelo atmosférico.</p></div>
             <span class="source-status live" id="sourceAirStatus">CONECTANDO</span>
           </article>
+          <article class="panel data-source-card" data-source-card="cams_radiation">
+            <div class="source-icon satellite"><svg class="icon"><use href="#i-satellite"></use></svg></div>
+            <div><span>RADIAÇÃO SOLAR · COPERNICUS</span><h3>CAMS Solar Radiation</h3><p>GHI, BHI, DHI e DNI da série temporal CAMS. Integração isolada: uma falha no CAMS não bloqueia Open-Meteo, OpenWeather ou Meteomatics.</p></div>
+            <span class="source-status live" id="sourceCamsStatus">CONFIGURADO</span>
+          </article>
+          <article class="panel data-source-card" data-source-card="cams_values">
+            <div class="source-icon satellite"><svg class="icon"><use href="#i-satellite"></use></svg></div>
+            <div><span>ÚLTIMO DIA CAMS</span><h3 id="camsDateValue">N/D</h3><p>GHI: <strong id="camsGhiValue">N/D</strong> · DNI: <strong id="camsDniValue">N/D</strong> · DHI: <strong id="camsDhiValue">N/D</strong></p></div>
+            <span class="source-status live">SÉRIE</span>
+          </article>
           <article class="panel data-source-card" data-source-card="radiation_open_meteo">
             <div class="source-icon satellite"><svg class="icon"><use href="#i-satellite"></use></svg></div>
             <div><span>RADIAÇÃO E CLIMA</span><h3>Open-Meteo · Radiação</h3><p>Radiação solar de onda curta, direta, difusa, DNI e radiação terrestre para o ponto de Ribeirão Preto.</p></div>
@@ -740,6 +750,31 @@
             </div>
           </article>
 
+          
+
+          <article class="panel weather-comparison-card">
+            <div class="panel-heading">
+              <div><span class="eyebrow">ANÁLISE DE CONSISTÊNCIA</span><h3>Comparador Open-Meteo × OpenWeather</h3><p>Duas fontes independentes para o mesmo ponto geográfico. A diferença é reportada, não mascarada.</p></div>
+              <button class="small-button" id="refreshWeatherComparisonButton"><svg class="icon"><use href="#i-refresh"></use></svg>Atualizar comparação</button>
+            </div>
+            <div class="comparison-summary">
+              <div><span>MÉTRICAS COMPARÁVEIS</span><strong id="comparisonMetricCount">--</strong></div>
+              <div><span>DIFERENÇA RELATIVA MÉDIA</span><strong id="comparisonMeanDiff">--</strong></div>
+              <div><span>INTERPRETAÇÃO</span><strong id="comparisonInterpretation">Aguardando dados</strong></div>
+            </div>
+            <div class="comparison-table-wrap"><table class="comparison-table"><thead><tr><th>Variável</th><th>Open-Meteo</th><th>OpenWeather</th><th>Diferença</th><th>Dif. relativa</th></tr></thead><tbody id="weatherComparisonBody"><tr><td colspan="5">Carregando comparação...</td></tr></tbody></table></div>
+            <div class="comparison-method" id="comparisonMethodology">Metodologia: --</div>
+          </article>
+
+          <article class="panel api-console-card" id="apiConsolePanel">
+            <div class="panel-heading">
+              <div><span class="eyebrow">DIAGNÓSTICO</span><h3>Console de APIs e erros</h3><p>Mostra o estado real das fontes, HTTP, timeout e falhas de integração sem expor credenciais.</p></div>
+              <div class="api-console-actions"><button class="small-button" id="refreshDiagnosticsButton">Atualizar</button><button class="small-button" id="clearDiagnosticsButton">Limpar</button></div>
+            </div>
+            <div class="api-console-summary" id="diagnosticsSummary">Aguardando diagnóstico...</div>
+            <div class="api-console-log" id="diagnosticsLog" role="log" aria-live="polite"><div class="console-empty">Nenhum evento registrado.</div></div>
+          </article>
+
           <article class="panel data-taxonomy-card">
             <div class="panel-heading"><div><h3>Taxonomia visual obrigatória</h3><p>Cada número do sistema deve indicar sua origem</p></div></div>
             <div class="taxonomy-grid">
@@ -750,20 +785,20 @@
             </div>
           </article>
 
-          <article class="panel error-console-card">
-            <div class="panel-heading">
-              <div>
-                <h3>Console de erros</h3>
-                <p>Registro em tempo real de falhas da API, fontes, JavaScript e requisições.</p>
-              </div>
-              <div class="console-actions">
-                <span class="console-count" id="errorConsoleCount">0 erros</span>
-                <button class="small-button" id="clearErrorConsoleButton"><svg class="icon"><use href="#i-trash"></use></svg>Limpar</button>
-              </div>
-            </div>
-            <div class="error-console" id="errorConsole" role="log" aria-live="polite" aria-label="Console de erros">
-              <div class="console-empty" id="errorConsoleEmpty">Nenhum erro registrado até o momento.</div>
-            </div>
+          <article class="panel schema-card">
+            <div class="panel-heading"><div><h3>Exemplo de contrato de dados</h3><p>Estrutura usada pela API de ingestão</p></div><button class="small-button" id="copySchemaButton"><svg class="icon"><use href="#i-copy"></use></svg>Copiar</button></div>
+            <pre id="schemaCode"><code>{
+  "station_code": "RP-CENTRO-04",
+  "observed_at": "2026-08-25T15:00:00-03:00",
+  "source": "sensor_escolar_01",
+  "quality_score": 95,
+  "measurements": {
+    "air_temperature_c": 34.6,
+    "relative_humidity_pct": 31,
+    "wind_speed_ms": 1.8,
+    "shortwave_radiation_wm2": 812
+  }
+}</code></pre>
           </article>
         </div>
       </section>
@@ -855,7 +890,7 @@
     </main>
 
     <footer class="app-footer">
-      <div><span>FONTES:</span> Open-Meteo · CAMS · NASA POWER · Supabase · INMET (referência)</div>
+      <div><span>FONTES:</span> Open-Meteo · OpenWeather · CAMS · NASA POWER · Supabase · INMET (referência)</div>
       <div><span>ARQUITETURA:</span> Frontend responsivo · Edge API · PostgreSQL · cache · modelo híbrido</div>
       <div><span>VERSÃO:</span> SIPIC-RP v1.0.0</div>
     </footer>
@@ -904,6 +939,6 @@
   </svg>
 
   <script src="config.js"></script>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=133" defer></script>
 </body>
 </html>

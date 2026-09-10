@@ -46,6 +46,8 @@
       health: null,
       analytics: null,
       solar: null,
+      cams: null,
+      weatherComparison: null,
       latencyMs: null,
       lastLoadedAt: null,
       error: null,
@@ -228,82 +230,18 @@
   function showToast(title, message, type = "success") {
     const host = $("#toastContainer");
     if (!host) return;
+    const readableMessage = message && typeof message === "object"
+      ? (message.message || message.detail || message.error?.message || message.error || JSON.stringify(message))
+      : String(message ?? "");
     const toast = document.createElement("div");
     toast.className = "toast";
-    toast.innerHTML = `<i>${type === "success" ? "✓" : type === "warning" ? "!" : "i"}</i><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(message)}</span></div>`;
+    toast.innerHTML = `<i>${type === "success" ? "✓" : type === "warning" ? "!" : "i"}</i><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(readableMessage)}</span></div>`;
     host.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = "0";
       toast.style.transform = "translateX(12px)";
       setTimeout(() => toast.remove(), 220);
     }, 3600);
-  }
-
-
-  const errorConsoleState = { errors: [], max: 200 };
-
-  function logConsoleError(source, error, extra = "") {
-    const host = $("#errorConsole");
-    const message = error?.message || String(error || "Erro desconhecido");
-    const stack = error?.stack || "";
-    const detail = extra || stack;
-    const entry = {
-      time: new Date(),
-      source: String(source || "Aplicação"),
-      message,
-      detail,
-    };
-    errorConsoleState.errors.push(entry);
-    if (errorConsoleState.errors.length > errorConsoleState.max) {
-      errorConsoleState.errors.splice(0, errorConsoleState.errors.length - errorConsoleState.max);
-    }
-
-    if (host) {
-      const empty = $("#errorConsoleEmpty");
-      if (empty) empty.remove();
-      const row = document.createElement("div");
-      row.className = "console-entry";
-      row.innerHTML = `<span class="console-time">${entry.time.toLocaleTimeString("pt-BR")}</span><span class="console-source">${escapeHtml(entry.source)}</span><span class="console-message">${escapeHtml(entry.message)}</span>${entry.detail ? `<pre class="console-detail">${escapeHtml(entry.detail)}</pre>` : ""}`;
-      host.appendChild(row);
-      while (host.children.length > errorConsoleState.max) host.firstElementChild?.remove();
-      host.scrollTop = host.scrollHeight;
-    }
-
-    const count = $("#errorConsoleCount");
-    if (count) count.textContent = `${errorConsoleState.errors.length} ${errorConsoleState.errors.length === 1 ? "erro" : "erros"}`;
-
-    // Mantém também o console nativo do navegador sincronizado.
-    console.error(`[SIPIC-RP] ${entry.source}: ${entry.message}`, error);
-  }
-
-  function clearErrorConsole() {
-    errorConsoleState.errors.length = 0;
-    const host = $("#errorConsole");
-    if (host) host.innerHTML = `<div class="console-empty" id="errorConsoleEmpty">Nenhum erro registrado até o momento.</div>`;
-    setText("#errorConsoleCount", "0 erros");
-  }
-
-  function setupErrorMonitoring() {
-    window.addEventListener("error", (event) => {
-      logConsoleError(
-        "JavaScript",
-        event.error || new Error(event.message || "Erro de execução."),
-        `${event.filename || "arquivo desconhecido"}:${event.lineno || "?"}:${event.colno || "?"}`,
-      );
-    });
-
-    window.addEventListener("unhandledrejection", (event) => {
-      const reason = event.reason instanceof Error ? event.reason : new Error(String(event.reason ?? "Promise rejeitada sem motivo."));
-      logConsoleError("Promise", reason);
-    });
-
-    window.addEventListener("offline", () => {
-      logConsoleError("Rede", new Error("O navegador ficou offline."));
-    });
-
-    window.addEventListener("online", () => {
-      showToast("Conexão restaurada", "A conexão de rede foi restabelecida.", "success");
-    });
   }
 
 
@@ -357,24 +295,34 @@
   }
 
   async function apiFetch(path, options = {}) {
-    if (!CONFIG.apiBaseUrl) {
-      const error = new Error("A URL da API não foi configurada.");
-      logConsoleError("API", error);
-      throw error;
-    }
+    if (!CONFIG.apiBaseUrl) throw new Error("A URL da API não foi configurada.");
     let lastError;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    const method = String(options.method || "GET").toUpperCase();
+    const headers = { Accept: "application/json", ...(options.headers || {}) };
+    if (options.body !== undefined && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+    for (let attempt = 0; attempt < (options.retry === false ? 1 : 2); attempt += 1) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), CONFIG.requestTimeoutMs);
       try {
-        const response = await fetch(apiEndpoint(path), { method: "GET", headers: { Accept: "application/json" }, cache: "no-store", signal: controller.signal });
+        const response = await fetch(apiEndpoint(path), { method, headers, body: options.body, cache: "no-store", signal: controller.signal });
         const payload = await response.json().catch(() => null);
-        if (!response.ok || payload?.ok === false) throw new Error(payload?.message || payload?.error || `A API respondeu com HTTP ${response.status}.`);
+        if (!response.ok || payload?.ok === false) {
+          const detail = payload?.message
+            || payload?.detail
+            || payload?.error?.message
+            || (typeof payload?.error === "string" ? payload.error : "")
+            || (payload && typeof payload === "object" ? JSON.stringify(payload) : "")
+            || `A API respondeu com HTTP ${response.status}.`;
+          const error = new Error(String(detail));
+          error.status = response.status;
+          error.code = payload?.error_code || (typeof payload?.error === "string" ? payload.error : "") || "api_error";
+          error.payload = payload;
+          throw error;
+        }
         return payload;
       } catch (error) {
         lastError = error?.name === "AbortError" ? new Error("A API excedeu o tempo limite de resposta.") : error;
-        logConsoleError("API", lastError, `Rota: ${path} · tentativa ${attempt + 1}/2`);
-        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 700));
+        if (attempt === 0 && options.retry !== false) await new Promise((resolve) => setTimeout(resolve, 700));
       } finally { clearTimeout(timeout); }
     }
     throw lastError;
@@ -388,6 +336,8 @@
       degraded: "DEGRADADO",
       reference_only: "REFERÊNCIA",
       configured: "CONFIGURADO",
+      fallback: "CONTINGÊNCIA",
+      not_configured: "NÃO CONFIGURADO",
       offline: "OFFLINE",
       error: "ERRO",
     };
@@ -398,7 +348,7 @@
     const element = $(selector);
     if (!element) return;
     element.classList.remove("live", "online", "stale", "degraded", "offline", "error");
-    const normalized = status === "fresh" ? "online" : status === "reference_only" ? "degraded" : status;
+    const normalized = status === "fresh" ? "online" : ["reference_only", "fallback", "not_configured"].includes(status) ? "degraded" : status;
     if (["online", "stale", "degraded", "offline", "error"].includes(normalized)) {
       element.classList.add(normalized);
     }
@@ -501,6 +451,7 @@
     setSourceBadge("#sourceAirStatus", sourceById.get("open_meteo_air")?.status || (state.api.status === "error" ? "error" : "configured"));
     setSourceBadge("#sourceDatabaseStatus", sourceById.get("supabase")?.status || (health?.database?.status || "configured"));
     setSourceBadge("#sourceNasaStatus", state.api.solar?.ok ? (state.api.solar.stale ? "stale" : "online") : "configured");
+    setSourceBadge("#sourceCamsStatus", state.api.cams?.status || "configured");
 
     const sourceCount = data?.sources?.length || 0;
     const sourceOnline = (data?.sources || []).filter((source) => ["online", "reference_only"].includes(source.status)).length;
@@ -650,6 +601,56 @@
     }
   }
 
+  async function loadCamsData() {
+    try {
+      state.api.cams = await apiFetch("/cams-radiation");
+      renderCamsData();
+    } catch (error) {
+      state.api.cams = { ok: false, status: "error", message: error.message };
+      console.warn("CAMS radiation unavailable", error);
+    } finally {
+      renderApiStatus();
+    }
+  }
+
+
+  function renderWeatherComparison() {
+    const data = state.api.weatherComparison;
+    if (!data) return;
+    setText("#comparisonMetricCount", String(data.summary?.comparable_metrics ?? 0));
+    setText("#comparisonMeanDiff", data.summary?.mean_relative_difference_pct != null ? `${pt(data.summary.mean_relative_difference_pct, 2)} %` : "--");
+    setText("#comparisonInterpretation", data.summary?.interpretation || "--");
+    setText("#comparisonMethodology", `Metodologia: ${data.methodology || "comparação entre fontes independentes"}`);
+    const body = $("#weatherComparisonBody");
+    if (!body) return;
+    const rows = Object.values(data.comparison || {});
+    body.innerHTML = rows.length ? rows.map((m) => {
+      const fmt = (v) => v == null ? "N/D" : `${pt(v, 2)} ${m.unit || ""}`;
+      const diff = m.absolute_difference == null ? "N/D" : `${pt(m.absolute_difference, 2)} ${m.unit || ""}`;
+      const rel = m.relative_difference_pct == null ? "N/D" : `${pt(m.relative_difference_pct, 2)} %`;
+      return `<tr><td>${m.label}</td><td>${fmt(m.open_meteo)}</td><td>${fmt(m.openweather)}</td><td>${diff}</td><td>${rel}</td></tr>`;
+    }).join("") : '<tr><td colspan="5">Nenhuma variável pôde ser comparada.</td></tr>';
+  }
+
+  async function loadWeatherComparison(showFeedback = false) {
+    try {
+      const comparison = await apiFetch("/weather-comparison", { noCache: true });
+      state.api.weatherComparison = comparison;
+      renderWeatherComparison();
+      if (showFeedback) {
+        const bothOnline = comparison.sources?.open_meteo?.status === "online" && comparison.sources?.openweather?.status === "online";
+        showToast(bothOnline ? "Comparação atualizada" : "Comparação em modo degradado", bothOnline ? `${comparison.summary?.comparable_metrics ?? 0} métricas comparáveis entre as duas fontes.` : "Uma ou mais fontes externas não responderam; o console mostra o motivo.", bothOnline ? "info" : "warning");
+      }
+      return comparison;
+    } catch (error) {
+      state.api.weatherComparison = null;
+      const body = $("#weatherComparisonBody");
+      if (body) body.innerHTML = `<tr><td colspan="5">Falha na comparação: ${String(error.message).replace(/[<>]/g, "")}</td></tr>`;
+      if (showFeedback) showToast("Comparação indisponível", error.message, "warning");
+      throw error;
+    }
+  }
+
   async function loadDashboardData(force = false, announce = false) {
     if (state.api.loading) return state.api.loading;
     const task = (async () => {
@@ -669,6 +670,8 @@
         void testApiHealth(false);
         void loadAnalyticsData();
         void loadSolarData();
+        void loadCamsData();
+        void loadWeatherComparison(false).catch(() => {});
         if (announce) {
           const localReference = dashboard?.data_status === "local_reference";
           showToast(
@@ -1038,6 +1041,17 @@
       <g opacity=".86">${shapes.join("")}</g>
       ${markers}
     `;
+  }
+
+  function renderCamsData() {
+    const cams = state.api.cams;
+    if (!cams) return;
+    const rows = Array.isArray(cams.rows) ? cams.rows : [];
+    const latest = rows.length ? rows[rows.length - 1] : null;
+    setText("#camsDateValue", cams.date || "N/D");
+    setText("#camsGhiValue", Number.isFinite(Number(latest?.ghi_wm2)) ? `${pt(latest.ghi_wm2, 0)} W/m²` : "N/D");
+    setText("#camsDniValue", Number.isFinite(Number(latest?.dni_wm2)) ? `${pt(latest.dni_wm2, 0)} W/m²` : "N/D");
+    setText("#camsDhiValue", Number.isFinite(Number(latest?.dhi_wm2)) ? `${pt(latest.dhi_wm2, 0)} W/m²` : "N/D");
   }
 
   function renderSolarData() {
@@ -1899,6 +1913,50 @@
     }
   }
 
+  function renderDiagnostics(data) {
+    const summary = $("#diagnosticsSummary");
+    const log = $("#diagnosticsLog");
+    if (!summary || !log) return;
+    const checks = Object.entries(data?.checks || {});
+    const online = checks.filter(([, v]) => v.ok).length;
+    summary.textContent = `${online}/${checks.length} fontes online · diagnóstico em ${data?.latency_ms ?? "--"} ms`;
+    const rows = [];
+    for (const [source, item] of checks) {
+      // Uma contingência automática que respondeu com sucesso é um estado operacional,
+      // não um WARN. Reservamos WARN para cache/contingência degradada (ex.: referência
+      // calculada localmente quando até a fonte alternativa externa falha).
+      const level = !item.ok
+        ? "error"
+        : ["degraded", "stale"].includes(item.status)
+          ? "warn"
+          : "info";
+      const successMessage = item.status === "fallback"
+        ? `ONLINE · CONTINGÊNCIA AUTOMÁTICA · ${item.message || "fonte alternativa em uso"}`
+        : item.status === "degraded"
+          ? `CONTINGÊNCIA DEGRADADA · ${item.message || "referência alternativa em uso"}`
+          : `ONLINE · HTTP ${item.http_status || 200}${item.message ? ` · ${item.message}` : ""}`;
+      rows.push(`<div class="console-row"><span>${new Date().toLocaleTimeString("pt-BR")}</span><span class="console-level-${level}">${level.toUpperCase()}</span><span class="console-source">${source}</span><span class="console-message">${String(item.ok ? successMessage : `${item.message || "Falha"}${item.http_status ? ` · HTTP ${item.http_status}` : ""}`).replace(/[<>]/g, "")}</span></div>`);
+    }
+    for (const entry of (data?.logs || []).slice(-50)) {
+      rows.push(`<div class="console-row"><span>${new Date(entry.timestamp).toLocaleTimeString("pt-BR")}</span><span class="console-level-${entry.level}">${String(entry.level).toUpperCase()}</span><span class="console-source">${String(entry.source).replace(/[<>]/g, "")}</span><span class="console-message">${String(entry.message).replace(/[<>]/g, "")}</span></div>`);
+    }
+    log.innerHTML = rows.length ? rows.join("") : '<div class="console-empty">Nenhum evento registrado.</div>';
+  }
+
+  async function loadDiagnostics(showFeedback = false) {
+    try {
+      const data = await apiFetch("/diagnostics", { retry: false });
+      renderDiagnostics(data);
+      if (showFeedback) showToast("Diagnóstico atualizado", `${data.summary?.online ?? 0}/${data.summary?.total ?? 0} fontes responderam.`);
+      return data;
+    } catch (error) {
+      const log = $("#diagnosticsLog");
+      if (log) log.innerHTML = `<div class="console-row"><span>${new Date().toLocaleTimeString("pt-BR")}</span><span class="console-level-error">ERROR</span><span class="console-source">SIPIC-RP</span><span class="console-message">${String(error.message).replace(/[<>]/g, "")}</span></div>`;
+      if (showFeedback) showToast("Diagnóstico indisponível", error.message, "warning");
+      return null;
+    }
+  }
+
   function setupEvents() {
     $$(".nav-item").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
     $$('[data-page-link]').forEach((button) => button.addEventListener("click", () => setPage(button.dataset.pageLink)));
@@ -1917,6 +1975,13 @@
       } catch {
         showToast("Modo de apresentação", "O navegador bloqueou a ativação de tela cheia.", "warning");
       }
+    });
+
+    $("#refreshWeatherComparisonButton")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try { await loadWeatherComparison(true); } catch {}
+      finally { button.disabled = false; }
     });
 
     $("#refreshDashboardButton")?.addEventListener("click", async (event) => {
@@ -1998,6 +2063,9 @@
       if (action === "map") $("#exportMapButton")?.click();
     }));
 
+    $("#refreshDiagnosticsButton")?.addEventListener("click", () => { void loadDiagnostics(true); });
+    $("#clearDiagnosticsButton")?.addEventListener("click", () => { const log = $("#diagnosticsLog"); if (log) log.innerHTML = '<div class="console-empty">Console limpo.</div>'; });
+
     $("#testApiButton")?.addEventListener("click", async (event) => {
       const button = event.currentTarget;
       button.disabled = true;
@@ -2027,7 +2095,20 @@
       showToast("URL copiada", "A URL base da API foi copiada.");
     });
 
-    $("#clearErrorConsoleButton")?.addEventListener("click", clearErrorConsole);
+    $("#copySchemaButton")?.addEventListener("click", async () => {
+      const text = $("#schemaCode")?.innerText || "";
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+      showToast("Contrato copiado", "O exemplo JSON foi copiado para a área de transferência.");
+    });
 
     $("#downloadJsonButton")?.addEventListener("click", () => openPdfReport("complete"));
 
@@ -2049,7 +2130,6 @@
   }
 
   function initialize() {
-    setupErrorMonitoring();
     renderCityScene();
     renderMiniCity();
     renderSparkline("#venusWave", createWaveData(1448, 150, 0.33), COLORS.orange);
@@ -2064,6 +2144,8 @@
     renderSensorNetwork();
     renderSensorInventory();
     setupEvents();
+    void loadOpenWeatherKeyStatus();
+    void loadDiagnostics(false);
     updateClocks();
     updateDashboardValues();
     renderApiStatus();

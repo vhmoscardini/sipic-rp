@@ -2,8 +2,15 @@ import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { execFile } from "node:child_process";
+import https from "node:https";
+import dns from "node:dns";
+import net from "node:net";
+import tls from "node:tls";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
+const execFileAsync = promisify(execFile);
 
 const MIME = Object.freeze({
   ".html": "text/html; charset=utf-8",
@@ -53,7 +60,16 @@ const UPSTREAM_API = String(
 ).replace(/\/$/, "");
 
 const apiCache = new Map();
+const runtimeLogs = [];
+function logRuntime(level, source, message, details = {}) {
+  const entry = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: new Date().toISOString(), level, source, message, ...details };
+  runtimeLogs.push(entry);
+  if (runtimeLogs.length > 300) runtimeLogs.splice(0, runtimeLogs.length - 300);
+  const fn = level === "error" ? console.error : level === "warn" ? console.warn : console.info;
+  fn(`[SIPIC][${source}] ${message}`);
+}
 const CACHE_TTL_MS = Math.max(60_000, Number(process.env.API_CACHE_TTL_MS || 10 * 60_000));
+const IS_VERCEL = String(process.env.VERCEL || "").toLowerCase() === "1" || Boolean(process.env.VERCEL_ENV);
 
 // Fontes públicas diretas: usadas como rota principal de contingência quando a
 // Edge Function não estiver disponível. Open-Meteo e CAMS são acessados sem
@@ -61,9 +77,11 @@ const CACHE_TTL_MS = Math.max(60_000, Number(process.env.API_CACHE_TTL_MS || 10 
 const RIBEIRAO_PRETO = Object.freeze({ latitude: -21.1775, longitude: -47.8103, timezone: "America/Sao_Paulo" });
 const OPEN_METEO_WEATHER_URL = "https://api.open-meteo.com/v1/forecast";
 const OPEN_METEO_AIR_URL = "https://air-quality-api.open-meteo.com/v1/air-quality";
-const DIRECT_SOURCE_TIMEOUT_MS = Math.max(3_000, Number(process.env.DIRECT_SOURCE_TIMEOUT_MS || 9_000));
+const DIRECT_SOURCE_TIMEOUT_MS = Math.max(5_000, Number(process.env.DIRECT_SOURCE_TIMEOUT_MS || 15_000));
 
 const OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather";
+let runtimeOpenWeatherApiKey = String(process.env.OPENWEATHER_API_KEY || "").trim();
+
 const METEOMATICS_URL = "https://api.meteomatics.com";
 
 function finiteNumber(value) {
@@ -81,32 +99,238 @@ function parseMeteomatics(payload) {
   return out;
 }
 
+async function fetchOpenMeteoCurrent() {
+  const params = new URLSearchParams({
+    latitude: String(RIBEIRAO_PRETO.latitude), longitude: String(RIBEIRAO_PRETO.longitude),
+    timezone: RIBEIRAO_PRETO.timezone,
+    current: "temperature_2m,relative_humidity_2m,apparent_temperature,pressure_msl,wind_speed_10m,wind_direction_10m,precipitation,cloud_cover,weather_code",
+  });
+  const payload = await fetchJsonWithTimeout(`${OPEN_METEO_WEATHER_URL}?${params}`);
+  const c = payload?.current || {};
+  return {
+    configured: true, status: "online", source: "Open-Meteo",
+    observed_at: c.time ? new Date(c.time).toISOString() : null,
+    temperature_c: finiteNumber(c.temperature_2m),
+    apparent_temperature_c: finiteNumber(c.apparent_temperature),
+    humidity_pct: finiteNumber(c.relative_humidity_2m),
+    pressure_hpa: finiteNumber(c.pressure_msl),
+    wind_speed_ms: finiteNumber(c.wind_speed_10m) !== null ? finiteNumber(c.wind_speed_10m) / 3.6 : null,
+    wind_direction_deg: finiteNumber(c.wind_direction_10m),
+    precipitation_1h_mm: finiteNumber(c.precipitation),
+    cloud_cover_pct: finiteNumber(c.cloud_cover),
+    weather_code: finiteNumber(c.weather_code),
+  };
+}
+
+async function weatherComparison() {
+  const started = Date.now();
+  const results = await Promise.allSettled([fetchOpenMeteoCurrent(), fetchOpenWeatherCurrent()]);
+  const openMeteo = results[0].status === "fulfilled" ? results[0].value : { status: "error", source: "Open-Meteo", message: results[0].reason?.message || "Falha na consulta." };
+  const openWeather = results[1].status === "fulfilled" ? results[1].value : { status: "error", source: "OpenWeather", message: results[1].reason?.message || "Falha na consulta." };
+  const metrics = [
+    ["temperature_c", "Temperatura", "°C"],
+    ["apparent_temperature_c", "Sensação térmica", "°C"],
+    ["humidity_pct", "Umidade relativa", "%"],
+    ["pressure_hpa", "Pressão atmosférica", "hPa"],
+    ["wind_speed_ms", "Velocidade do vento", "m/s"],
+    ["precipitation_1h_mm", "Precipitação", "mm"],
+    ["cloud_cover_pct", "Nebulosidade", "%"],
+  ];
+  const comparison = Object.fromEntries(metrics.map(([key, label, unit]) => {
+    const a = finiteNumber(openMeteo[key]);
+    const b = finiteNumber(openWeather[key]);
+    const difference = a !== null && b !== null ? Math.abs(a - b) : null;
+    const mean = a !== null && b !== null ? (Math.abs(a) + Math.abs(b)) / 2 : null;
+    const relative_difference_pct = difference !== null && mean > 0 ? (difference / mean) * 100 : null;
+    return [key, { label, unit, open_meteo: a, openweather: b, absolute_difference: difference, relative_difference_pct: relative_difference_pct !== null ? Number(relative_difference_pct.toFixed(2)) : null }];
+  }));
+  const available = Object.values(comparison).filter((m) => m.open_meteo !== null && m.openweather !== null);
+  const meanRelativeDifferencePct = available.length ? available.reduce((sum, m) => sum + (m.relative_difference_pct || 0), 0) / available.length : null;
+  return {
+    ok: openMeteo.status === "online" || openWeather.status === "online",
+    generated_at: new Date().toISOString(), latency_ms: Date.now() - started,
+    methodology: "Comparação paralela de duas fontes meteorológicas independentes para o mesmo ponto geográfico. Diferenças não são tratadas como erro automaticamente, pois podem decorrer de modelos, fontes e horários de atualização distintos.",
+    location: RIBEIRAO_PRETO,
+    sources: { open_meteo: openMeteo, openweather: openWeather },
+    comparison,
+    summary: { comparable_metrics: available.length, mean_relative_difference_pct: meanRelativeDifferencePct !== null ? Number(meanRelativeDifferencePct.toFixed(2)) : null, interpretation: meanRelativeDifferencePct === null ? "Sem métricas suficientes para comparação." : meanRelativeDifferencePct <= 5 ? "Alta concordância entre as fontes para as variáveis comparáveis." : meanRelativeDifferencePct <= 15 ? "Concordância moderada; investigar diferenças de modelo e horário." : "Diferença elevada; verificar timestamp, configuração e características dos modelos." },
+  };
+}
+
+async function resolveOpenWeatherAddresses(hostname) {
+  try {
+    const addresses = await dns.promises.resolve4(hostname);
+    if (!addresses.length) throw new Error(`DNS não retornou endereços IPv4 para ${hostname}.`);
+    return [...new Set(addresses)];
+  } catch (error) {
+    const code = error?.code || "DNS_ERROR";
+    throw Object.assign(new Error(`DNS IPv4 não resolveu ${hostname}: ${code} ${error?.message || "falha na resolução"}`), {
+      phase: "dns",
+      error_code: code,
+      hostname,
+    });
+  }
+}
+
+function probeTcp(host, port, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const socket = net.connect({ host, port, family: 4 });
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      fn(value);
+    };
+    socket.setTimeout(timeoutMs, () => finish(reject, Object.assign(new Error(`Timeout TCP ao conectar ${host}:${port} após ${timeoutMs} ms.`), { phase: "tcp", host, port, latency_ms: Date.now() - started })));
+    socket.once("connect", () => finish(resolve, { host, port, latency_ms: Date.now() - started }));
+    socket.once("error", (error) => finish(reject, Object.assign(new Error(`Falha TCP em ${host}:${port}: ${error.code || error.message}`), { phase: "tcp", error_code: error.code || "TCP_ERROR", host, port, latency_ms: Date.now() - started })));
+  });
+}
+
+function probeTls(host, port, servername, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const socket = tls.connect({ host, port, family: 4, servername, rejectUnauthorized: true });
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      fn(value);
+    };
+    socket.setTimeout(timeoutMs, () => finish(reject, Object.assign(new Error(`Timeout TLS em ${servername} após ${timeoutMs} ms.`), { phase: "tls", host, servername, latency_ms: Date.now() - started })));
+    socket.once("secureConnect", () => finish(resolve, { host, servername, latency_ms: Date.now() - started, protocol: socket.getProtocol() }));
+    socket.once("error", (error) => finish(reject, Object.assign(new Error(`Falha TLS em ${servername}: ${error.code || error.message}`), { phase: "tls", error_code: error.code || "TLS_ERROR", host, servername, latency_ms: Date.now() - started })));
+  });
+}
+
+function requestOpenWeather(url) {
+  const parsed = new URL(url);
+  const timeoutMs = Math.max(5_000, DIRECT_SOURCE_TIMEOUT_MS);
+  return (async () => {
+    const started = Date.now();
+    const addresses = await resolveOpenWeatherAddresses(parsed.hostname);
+    const attempts = [];
+    let lastError = null;
+
+    for (const address of addresses) {
+      const attempt = { address, tcp: null, tls: null, http: null };
+      try {
+        attempt.tcp = await probeTcp(address, Number(parsed.port || 443), Math.min(timeoutMs, 5_000));
+        attempt.tls = await probeTls(address, Number(parsed.port || 443), parsed.hostname, Math.min(timeoutMs, 8_000));
+        const response = await new Promise((resolve, reject) => {
+          const req = https.request({
+            hostname: address,
+            port: Number(parsed.port || 443),
+            path: `${parsed.pathname}${parsed.search}`,
+            method: "GET",
+            family: 4,
+            servername: parsed.hostname,
+            headers: { Accept: "application/json", "User-Agent": "SIPIC-RP/1.1" },
+          }, (res) => {
+            let body = "";
+            res.setEncoding("utf8");
+            res.on("data", chunk => { body += chunk; });
+            res.on("end", () => resolve({ status: res.statusCode || 0, body, latency_ms: Date.now() - started }));
+          });
+          req.setTimeout(timeoutMs, () => req.destroy(Object.assign(new Error(`Timeout HTTP após ${timeoutMs} ms.`), { phase: "http", error_code: "HTTP_TIMEOUT" })));
+          req.once("error", reject);
+          req.end();
+        });
+        attempt.http = { status: response.status, latency_ms: response.latency_ms };
+        attempts.push(attempt);
+        return { ...response, diagnostics: { hostname: parsed.hostname, addresses, selected_address: address, attempts, total_latency_ms: Date.now() - started } };
+      } catch (error) {
+        lastError = error;
+        attempt.error = { phase: error?.phase || "connection", code: error?.error_code || error?.code || "CONNECTION_ERROR", message: error?.message || String(error), latency_ms: error?.latency_ms ?? null };
+        attempts.push(attempt);
+      }
+    }
+
+    const phase = lastError?.phase || "connection";
+    const message = lastError?.message || `Não foi possível conectar à ${parsed.hostname}.`;
+    throw Object.assign(new Error(message), {
+      phase,
+      error_code: lastError?.error_code || lastError?.code || "CONNECTION_ERROR",
+      diagnostics: { hostname: parsed.hostname, addresses, attempts, total_latency_ms: Date.now() - started },
+    });
+  })();
+}
+
+async function diagnoseOpenWeatherNetwork() {
+  const hostname = new URL(OPENWEATHER_URL).hostname;
+  const started = Date.now();
+  const out = { ok: false, hostname, api_key_configured: Boolean(runtimeOpenWeatherApiKey), latency_ms: 0, phases: {} };
+  try {
+    const addresses = await resolveOpenWeatherAddresses(hostname);
+    out.phases.dns = { ok: true, addresses };
+    const tcpResults = [];
+    for (const address of addresses) {
+      try { tcpResults.push({ address, ok: true, ...(await probeTcp(address, 443, 5_000)) }); }
+      catch (error) { tcpResults.push({ address, ok: false, message: error.message, error_code: error.error_code || error.code }); }
+    }
+    out.phases.tcp = { ok: tcpResults.some(x => x.ok), results: tcpResults };
+    const tlsResults = [];
+    for (const address of addresses.filter((a) => tcpResults.some((x) => x.address === a && x.ok))) {
+      try { tlsResults.push({ address, ok: true, ...(await probeTls(address, 443, hostname, 8_000)) }); }
+      catch (error) { tlsResults.push({ address, ok: false, message: error.message, error_code: error.error_code || error.code }); }
+    }
+    out.phases.tls = { ok: tlsResults.some(x => x.ok), results: tlsResults };
+    if (runtimeOpenWeatherApiKey) {
+      const result = await fetchOpenWeatherCurrent();
+      out.phases.http = { ok: result.status === "online", status: result.status, http_status: result.http_status || null, message: result.message || null };
+      out.ok = result.status === "online";
+    } else {
+      out.phases.http = { ok: false, skipped: true, message: "API Key não configurada." };
+    }
+  } catch (error) {
+    out.error = { phase: error?.phase || "unknown", code: error?.error_code || error?.code || "DIAGNOSTIC_ERROR", message: error?.message || String(error), details: error?.diagnostics || null };
+  }
+  out.latency_ms = Date.now() - started;
+  return out;
+}
+
 async function fetchOpenWeatherCurrent() {
-  const key = String(process.env.OPENWEATHER_API_KEY || "").trim();
-  if (!key) return { configured: false, status: "configured", message: "OPENWEATHER_API_KEY não configurada." };
+  const key = runtimeOpenWeatherApiKey;
+  if (!key) return { configured: false, status: "not_configured", message: "OPENWEATHER_API_KEY não configurada. Informe a chave no painel Dados e fontes." };
   const params = new URLSearchParams({
     lat: String(RIBEIRAO_PRETO.latitude), lon: String(RIBEIRAO_PRETO.longitude),
     appid: key, units: "metric", lang: "pt_br",
   });
-  const payload = await fetchJsonWithTimeout(`${OPENWEATHER_URL}?${params}`);
-  const rain = finiteNumber(payload?.rain?.["1h"]);
-  const snow = finiteNumber(payload?.snow?.["1h"]);
-  return {
-    configured: true, status: "online", source: "OpenWeather",
-    observed_at: payload?.dt ? new Date(Number(payload.dt) * 1000).toISOString() : null,
-    temperature_c: finiteNumber(payload?.main?.temp),
-    apparent_temperature_c: finiteNumber(payload?.main?.feels_like),
-    humidity_pct: finiteNumber(payload?.main?.humidity),
-    pressure_hpa: finiteNumber(payload?.main?.pressure),
-    wind_speed_ms: finiteNumber(payload?.wind?.speed),
-    wind_direction_deg: finiteNumber(payload?.wind?.deg),
-    wind_gust_ms: finiteNumber(payload?.wind?.gust),
-    cloud_cover_pct: finiteNumber(payload?.clouds?.all),
-    precipitation_1h_mm: rain ?? snow,
-    condition: payload?.weather?.[0]?.description || payload?.weather?.[0]?.main || null,
-    weather_code: finiteNumber(payload?.weather?.[0]?.id),
-    icon: payload?.weather?.[0]?.icon || null,
-  };
+  try {
+    const response = await requestOpenWeather(`${OPENWEATHER_URL}?${params}`);
+    let payload = null;
+    try { payload = response.body ? JSON.parse(response.body) : null; } catch {}
+    const status = response.status;
+    if (status < 200 || status >= 300) {
+      const apiCode = payload?.cod || status;
+      const message = payload?.message || `OpenWeather respondeu HTTP ${status}.`;
+      const errorCode = status === 401 ? "invalid_or_inactive_api_key" : status === 429 ? "rate_limit" : status === 403 ? "forbidden" : `http_${status}`;
+      logRuntime("error", "OpenWeather", message, { http_status: status, error_code: errorCode });
+      return { configured: true, status: "error", source: "OpenWeather", http_status: status, error_code: errorCode, api_code: apiCode, message, latency_ms: response.latency_ms };
+    }
+    const rain = finiteNumber(payload?.rain?.["1h"]);
+    const snow = finiteNumber(payload?.snow?.["1h"]);
+    return {
+      configured: true, status: "online", source: "OpenWeather", http_status: status, latency_ms: response.latency_ms,
+      observed_at: payload?.dt ? new Date(Number(payload.dt) * 1000).toISOString() : null,
+      temperature_c: finiteNumber(payload?.main?.temp), apparent_temperature_c: finiteNumber(payload?.main?.feels_like),
+      humidity_pct: finiteNumber(payload?.main?.humidity), pressure_hpa: finiteNumber(payload?.main?.pressure),
+      wind_speed_ms: finiteNumber(payload?.wind?.speed), wind_direction_deg: finiteNumber(payload?.wind?.deg),
+      wind_gust_ms: finiteNumber(payload?.wind?.gust), cloud_cover_pct: finiteNumber(payload?.clouds?.all),
+      precipitation_1h_mm: rain ?? snow, condition: payload?.weather?.[0]?.description || payload?.weather?.[0]?.main || null,
+      weather_code: finiteNumber(payload?.weather?.[0]?.id), icon: payload?.weather?.[0]?.icon || null,
+    };
+  } catch (error) {
+    const message = error?.message || String(error);
+    const details = { error_code: error?.error_code || "connection_error", phase: error?.phase || "connection", diagnostics: error?.diagnostics || null };
+    logRuntime("error", "OpenWeather", message, details);
+    const wrapped = new Error(`Não foi possível conectar à OpenWeather: ${message}`);
+    Object.assign(wrapped, details);
+    throw wrapped;
+  }
 }
 
 async function fetchMeteomaticsCurrent() {
@@ -146,6 +370,84 @@ async function directWeatherSources() {
   return { openWeather, meteomatics };
 }
 
+
+function localCamsSolarReference(reason = "Fonte solar externa indisponível") {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: RIBEIRAO_PRETO.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const rows = Array.from({ length: 24 }, (_, hour) => {
+    const solar = Math.max(0, Math.sin(((hour - 6) / 12) * Math.PI));
+    const ghi = solar * 820;
+    const direct = ghi * (0.68 + 0.12 * solar);
+    const diffuse = Math.max(0, ghi - direct);
+    const dni = solar > 0.08 ? Math.min(980, direct / Math.max(0.18, solar)) : 0;
+    return {
+      timestamp: `${parts}T${String(hour).padStart(2, "0")}:00`,
+      ghi_wm2: Math.round(ghi), bhi_wm2: Math.round(direct), dhi_wm2: Math.round(diffuse), dni_wm2: Math.round(dni),
+      reliability_pct: 45,
+    };
+  });
+  return {
+    ok: true, configured: Boolean(String(process.env.CAMS_API_KEY || "").trim()), status: "degraded",
+    source: "SIPIC-RP Solar Reference", requested_source: "CAMS Solar Radiation Time-Series",
+    dataset: "sipic-local-solar-reference", date: parts, location: { latitude: RIBEIRAO_PRETO.latitude, longitude: RIBEIRAO_PRETO.longitude },
+    temporal_resolution: "1hour", time_reference: RIBEIRAO_PRETO.timezone, rows,
+    fallback_source: "SIPIC-RP calculated reference", data_class: "calculated_reference",
+    message: `${reason}. Referência solar calculada ativada para manter o painel operacional; não representa medição CAMS.`,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+async function camsFallbackFromOpenMeteo(reason = "CAMS indisponível") {
+  try {
+    const solar = await directSolarData();
+    const rows = Array.isArray(solar.timeline) ? solar.timeline.map((row) => ({
+      timestamp: row.time,
+      ghi_wm2: Number.isFinite(Number(row.shortwave_radiation_wm2)) ? Number(row.shortwave_radiation_wm2) : null,
+      bhi_wm2: Number.isFinite(Number(row.direct_radiation_wm2)) ? Number(row.direct_radiation_wm2) : null,
+      dhi_wm2: Number.isFinite(Number(row.diffuse_radiation_wm2)) ? Number(row.diffuse_radiation_wm2) : null,
+      dni_wm2: Number.isFinite(Number(row.direct_normal_irradiance_wm2)) ? Number(row.direct_normal_irradiance_wm2) : null,
+      reliability_pct: null,
+    })) : [];
+    return {
+      ok: true, configured: Boolean(String(process.env.CAMS_API_KEY || "").trim()), status: "fallback",
+      source: "Open-Meteo Solar Radiation", requested_source: "CAMS Solar Radiation Time-Series",
+      dataset: "open-meteo-radiation-fallback",
+      date: String(solar.earth?.time || rows.at(-1)?.timestamp || new Date().toISOString()).slice(0, 10),
+      location: { latitude: RIBEIRAO_PRETO.latitude, longitude: RIBEIRAO_PRETO.longitude },
+      temporal_resolution: "1hour", time_reference: RIBEIRAO_PRETO.timezone, rows, fallback_source: "Open-Meteo",
+      data_class: "live_modeled_fallback", message: `${reason}. Contingência Open-Meteo Solar ativa automaticamente.`,
+      generated_at: new Date().toISOString(),
+    };
+  } catch (error) {
+    return localCamsSolarReference(`${reason}; Open-Meteo Solar também indisponível: ${error?.message || error}`);
+  }
+}
+
+async function fetchCamsRadiation() {
+  const key = String(process.env.CAMS_API_KEY || "").trim();
+  if (!key) return await camsFallbackFromOpenMeteo("CAMS_API_KEY não configurada");
+  const cacheKeyName = "cams-radiation-latest-day";
+  const cached = apiCache.get(cacheKeyName);
+  if (cached && Date.now() - cached.savedAt < 6 * 60 * 60 * 1000) return cached.payload;
+  const python = process.platform === "win32" ? "python" : "python3";
+  try {
+    const { stdout } = await execFileAsync(python, [path.join(ROOT, "cams_radiation.py")], {
+      env: { ...process.env, CAMS_API_KEY: key, SIPIC_RADIATION_LAT: String(RIBEIRAO_PRETO.latitude), SIPIC_RADIATION_LON: String(RIBEIRAO_PRETO.longitude) },
+      timeout: Math.max(DIRECT_SOURCE_TIMEOUT_MS * 8, 60_000),
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    const payload = JSON.parse(stdout.trim());
+    if (!payload?.ok) throw new Error(payload?.message || "CAMS retornou uma resposta inválida.");
+    payload.status = "online";
+    payload.configured = true;
+    apiCache.set(cacheKeyName, { payload, savedAt: Date.now() });
+    return payload;
+  } catch (error) {
+    const message = error?.stderr?.trim() || error?.message || String(error);
+    logRuntime("warning", "CAMS", `Consulta CAMS falhou; usando Open-Meteo Solar: ${message}`);
+    return await camsFallbackFromOpenMeteo(`CAMS temporariamente indisponível: ${message}`);
+  }
+}
 
 async function fetchJsonWithTimeout(url) {
   const controller = new AbortController();
@@ -293,7 +595,11 @@ async function directSolarData() {
   const solarConstant = 1367.7;
   const venusIrradiance = solarConstant / (venusDistanceAu * venusDistanceAu);
   const timeline = (hourly.time || []).slice(0, 48).map((time, i) => ({
-    time, shortwave_radiation_wm2: Number.isFinite(Number(hourly.shortwave_radiation?.[i])) ? Number(hourly.shortwave_radiation[i]) : null,
+    time,
+    shortwave_radiation_wm2: Number.isFinite(Number(hourly.shortwave_radiation?.[i])) ? Number(hourly.shortwave_radiation[i]) : null,
+    direct_radiation_wm2: Number.isFinite(Number(hourly.direct_radiation?.[i])) ? Number(hourly.direct_radiation[i]) : null,
+    diffuse_radiation_wm2: Number.isFinite(Number(hourly.diffuse_radiation?.[i])) ? Number(hourly.diffuse_radiation[i]) : null,
+    direct_normal_irradiance_wm2: Number.isFinite(Number(hourly.direct_normal_irradiance?.[i])) ? Number(hourly.direct_normal_irradiance[i]) : null,
     terrestrial_radiation_wm2: Number.isFinite(Number(hourly.terrestrial_radiation?.[i])) ? Number(hourly.terrestrial_radiation[i]) : null,
   }));
   return { ok: true, stale: false, source: "Open-Meteo", generated_at: new Date().toISOString(), location: { ...RIBEIRAO_PRETO }, earth, venus: { distance_au: venusDistanceAu, solar_irradiance_wm2: Number(venusIrradiance.toFixed(1)), type: "calculated_from_mean_solar_distance", formula: "1367.7 / r²" }, timeline };
@@ -450,7 +756,210 @@ async function serveStatic(request, response, pathname) {
   }
 }
 
+async function readJsonBody(request, maxBytes = 16 * 1024) {
+  return await new Promise((resolve, reject) => {
+    let body = "";
+    let bytes = 0;
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      bytes += Buffer.byteLength(chunk);
+      if (bytes > maxBytes) {
+        reject(new Error("Payload excede o limite permitido."));
+        request.destroy();
+        return;
+      }
+      body += chunk;
+    });
+    request.on("end", () => {
+      try { resolve(body ? JSON.parse(body) : {}); }
+      catch { reject(new Error("JSON inválido.")); }
+    });
+    request.on("error", reject);
+  });
+}
+
+function maskApiKey(key) {
+  if (!key) return "";
+  if (key.length <= 8) return "••••••••";
+  return `${key.slice(0, 4)}••••••••${key.slice(-4)}`;
+}
+
+
+function getHeader(request, name) {
+  const value = request.headers?.[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] : String(value || "").trim();
+}
+
+function loadOpenWeatherKeyFromRequest(request) {
+  const headerKey = getHeader(request, "x-sipic-openweather-key");
+  if (headerKey && headerKey.length >= 20 && headerKey.length <= 256 && !/[\r\n]/.test(headerKey)) {
+    runtimeOpenWeatherApiKey = headerKey;
+  }
+}
+
+function setOpenWeatherPersistenceCookie(response, key) {
+  // In Vercel, the serverless filesystem is ephemeral/read-only. The browser
+  // sends the key back through the backend header on protected OpenWeather
+  // requests, while local deployments keep the existing .openweather-key file.
+  if (!IS_VERCEL) return;
+  const value = encodeURIComponent(Buffer.from(String(key || ""), "utf8").toString("base64url"));
+  response.setHeader("Set-Cookie", `sipic_ow=${value}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax${process.env.VERCEL_ENV ? "; Secure" : ""}`);
+}
+
 async function proxyApi(request, response, url) {
+  loadOpenWeatherKeyFromRequest(request);
+  const relative = url.pathname.replace(/^\/api\/?/, "");
+
+  // Configuração local da OpenWeather pelo painel. A chave fica apenas em
+  // memória no processo do servidor e nunca é devolvida ao frontend em texto puro.
+  if (relative === "settings/openweather") {
+    if (request.method === "GET") {
+      sendJson(response, 200, {
+        ok: true,
+        configured: Boolean(runtimeOpenWeatherApiKey),
+        masked_key: maskApiKey(runtimeOpenWeatherApiKey),
+        persistence: "arquivo_local_protegido + memoria_do_servidor + localStorage_do_navegador",
+      });
+      return;
+    }
+    if (request.method === "DELETE") {
+      runtimeOpenWeatherApiKey = "";
+      if (!IS_VERCEL) { try { await fs.rm(OPENWEATHER_KEY_FILE, { force: true }); } catch {} }
+      if (IS_VERCEL) response.setHeader("Set-Cookie", "sipic_ow=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax" + (process.env.VERCEL_ENV ? "; Secure" : ""));
+      sendJson(response, 200, { ok: true, configured: false, message: IS_VERCEL ? "Chave removida da sessão do servidor e do navegador." : "Chave removida do servidor local." });
+      return;
+    }
+    if (request.method === "POST") {
+      try {
+        const body = await readJsonBody(request);
+        const apiKey = String(body?.apiKey || "").trim();
+        if (!apiKey) {
+          runtimeOpenWeatherApiKey = "";
+          if (!IS_VERCEL) { try { await fs.rm(OPENWEATHER_KEY_FILE, { force: true }); } catch {} }
+          sendJson(response, 200, { ok: true, configured: false, message: "Nenhuma chave informada; OpenWeather desativada." });
+          return;
+        }
+        if (apiKey.length < 20 || apiKey.length > 256 || /[\r\n]/.test(apiKey)) {
+          sendJson(response, 400, { ok: false, error: "invalid_api_key_format", message: "Formato de API Key inválido." });
+          return;
+        }
+
+        // Testa a chave de verdade antes de confirmar a configuração.
+        const previous = runtimeOpenWeatherApiKey;
+        runtimeOpenWeatherApiKey = apiKey;
+        let test;
+        try { test = await fetchOpenWeatherCurrent(); }
+        catch (error) {
+          runtimeOpenWeatherApiKey = apiKey;
+          if (!IS_VERCEL) await fs.writeFile(OPENWEATHER_KEY_FILE, apiKey, { encoding: "utf8", mode: 0o600 });
+          setOpenWeatherPersistenceCookie(response, apiKey);
+          sendJson(response, 200, { ok: true, configured: true, validated: false, verification: "connection_failed", masked_key: maskApiKey(apiKey), source_status: "unreachable", message: `${error.message} A chave foi salva e poderá ser testada novamente pelo console.` });
+          return;
+        }
+        if (test.status !== "online") {
+          if (test.error_code === "invalid_or_inactive_api_key" || test.error_code === "forbidden" || test.error_code === "rate_limit") {
+            runtimeOpenWeatherApiKey = previous;
+            const statusCode = Number(test.http_status) || 502;
+            sendJson(response, statusCode === 401 ? 401 : 502, { ok: false, error: test.error_code, message: test.message || "A OpenWeather recusou a requisição.", http_status: statusCode, source: "OpenWeather" });
+            return;
+          }
+          runtimeOpenWeatherApiKey = apiKey;
+          if (!IS_VERCEL) await fs.writeFile(OPENWEATHER_KEY_FILE, apiKey, { encoding: "utf8", mode: 0o600 });
+          setOpenWeatherPersistenceCookie(response, apiKey);
+          sendJson(response, 200, { ok: true, configured: true, validated: false, verification: "api_error", masked_key: maskApiKey(apiKey), source_status: "error", message: test.message || "Chave salva, mas a OpenWeather retornou um erro." });
+          return;
+        }
+
+        runtimeOpenWeatherApiKey = apiKey;
+        if (!IS_VERCEL) await fs.writeFile(OPENWEATHER_KEY_FILE, apiKey, { encoding: "utf8", mode: 0o600 });
+        setOpenWeatherPersistenceCookie(response, apiKey);
+        sendJson(response, 200, { ok: true, configured: true, validated: true, masked_key: maskApiKey(runtimeOpenWeatherApiKey), source_status: "online", observed_at: test.observed_at, message: "Chave validada com sucesso pela OpenWeather e salva localmente." });
+      } catch (error) {
+        sendJson(response, 400, { ok: false, error: "invalid_request", message: error.message });
+      }
+      return;
+    }
+    sendJson(response, 405, { ok: false, error: "method_not_allowed", message: "Use GET, POST ou DELETE." }, { Allow: "GET, POST, DELETE, OPTIONS" });
+    return;
+  }
+
+  if (relative === "settings/openweather/test") {
+    if (!["GET", "POST"].includes(request.method || "GET")) {
+      sendJson(response, 405, { ok: false, error: "method_not_allowed", message: "Use GET ou POST." }, { Allow: "GET, POST, OPTIONS" });
+      return;
+    }
+    try {
+      const result = await fetchOpenWeatherCurrent();
+      const statusCode = result.status === "online" ? 200 : (Number(result.http_status) || 503);
+      sendJson(response, statusCode, {
+        ok: result.status === "online",
+        source: "OpenWeather",
+        configured: Boolean(runtimeOpenWeatherApiKey),
+        ...result,
+      });
+    } catch (error) {
+      sendJson(response, 502, { ok: false, source: "OpenWeather", status: "error", error: "connection_error", message: error.message });
+    }
+    return;
+  }
+
+  if (relative === "diagnostics/openweather") {
+    if (request.method !== "GET") {
+      sendJson(response, 405, { ok: false, error: "method_not_allowed", message: "Use GET." }, { Allow: "GET, OPTIONS" });
+      return;
+    }
+    const result = await diagnoseOpenWeatherNetwork();
+    sendJson(response, 200, result);
+    return;
+  }
+
+  if (relative === "diagnostics") {
+    if (request.method !== "GET") {
+      sendJson(response, 405, { ok: false, error: "method_not_allowed", message: "Use GET." }, { Allow: "GET, OPTIONS" });
+      return;
+    }
+    const started = Date.now();
+    const checks = {};
+    const run = async (name, fn) => {
+      const t = Date.now();
+      try {
+        const result = await fn();
+        checks[name] = { ok: result?.status === "online" || result?.ok === true || result?.status === "fresh", status: result?.status || "unknown", latency_ms: Date.now() - t, message: result?.message || null, http_status: result?.http_status || null };
+      } catch (error) {
+        checks[name] = { ok: false, status: "error", latency_ms: Date.now() - t, message: error?.message || String(error) };
+        logRuntime("error", name, error?.message || String(error));
+      }
+    };
+    await Promise.all([
+      run("Open-Meteo", fetchOpenMeteoCurrent),
+      run("OpenWeather", fetchOpenWeatherCurrent),
+      run("Meteomatics", fetchMeteomaticsCurrent),
+      run("CAMS", fetchCamsRadiation),
+      run("Open-Meteo Solar", directSolarData),
+      run("Supabase", async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), DIRECT_SOURCE_TIMEOUT_MS);
+        try {
+          const r = await fetch(`${UPSTREAM_API}/health`, { headers: { Accept: "application/json" }, signal: controller.signal });
+          const payload = await r.json().catch(() => ({}));
+          return { ok: r.ok, status: r.ok ? "online" : "error", http_status: r.status, message: payload?.message || null };
+        } finally { clearTimeout(timer); }
+      }),
+    ]);
+    const okCount = Object.values(checks).filter((item) => item.ok).length;
+    sendJson(response, 200, { ok: true, generated_at: new Date().toISOString(), latency_ms: Date.now() - started, summary: { online: okCount, total: Object.keys(checks).length }, checks, logs: runtimeLogs.slice(-100) });
+    return;
+  }
+
+  if (relative === "logs") {
+    if (request.method !== "GET") {
+      sendJson(response, 405, { ok: false, error: "method_not_allowed", message: "Use GET." }, { Allow: "GET, OPTIONS" });
+      return;
+    }
+    sendJson(response, 200, { ok: true, logs: runtimeLogs.slice(-100) });
+    return;
+  }
+
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method || "GET")) {
     sendJson(response, 405, {
       ok: false,
@@ -469,7 +978,26 @@ async function proxyApi(request, response, url) {
     return;
   }
 
-  const relative = url.pathname.replace(/^\/api\/?/, "");
+  if (relative === "weather-comparison") {
+    try {
+      const result = await weatherComparison();
+      // O endpoint permanece operacional mesmo quando uma fonte externa cai.
+      // A indisponibilidade da fonte aparece explicitamente no resultado.
+      sendJson(response, 200, { ...result, ok: true, status: result.sources?.open_meteo?.status === "online" && result.sources?.openweather?.status === "online" ? "online" : "degraded" }, { "X-SIPIC-Mode": "WEATHER-COMPARISON" });
+    } catch (error) {
+      sendJson(response, 503, { ok: false, status: "error", message: error.message, methodology: "Comparação indisponível." }, { "X-SIPIC-Mode": "WEATHER-COMPARISON" });
+    }
+    return;
+  }
+  if (relative === "cams-radiation") {
+    try {
+      const cams = await fetchCamsRadiation();
+      sendJson(response, cams.status === "error" ? 502 : 200, cams, { "X-SIPIC-Mode": "CAMS-ISOLATED" });
+    } catch (error) {
+      sendJson(response, 502, { ok: false, status: "error", message: error.message }, { "X-SIPIC-Mode": "CAMS-ISOLATED" });
+    }
+    return;
+  }
   if (relative === "solar") {
     try {
       const solar = await directSolarData();
@@ -565,8 +1093,7 @@ async function proxyApi(request, response, url) {
   }
 }
 
-export function createServer() {
-  return http.createServer(async (request, response) => {
+export async function handleRequest(request, response) {
     try {
       const url = new URL(request.url || "/", `http://${request.headers.host || `${HOST}:${PORT}`}`);
 
@@ -608,8 +1135,9 @@ export function createServer() {
         response.end();
       }
     }
-  });
 }
+
+export function createServer() { return http.createServer(handleRequest); }
 
 export async function startServer() {
   const server = createServer();
