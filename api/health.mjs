@@ -1,4 +1,7 @@
-const UPSTREAM_API = String(process.env.SIPIC_API_BASE_URL || "https://pzwtoksbbfvgsnwunzri.supabase.co/functions/v1/sipic-api").replace(/\/+$/, "");
+const UPSTREAM_API = String(
+  process.env.SIPIC_API_BASE_URL ||
+  "https://pzwtoksbbfvgsnwunzri.supabase.co/functions/v1/sipic-api"
+).replace(/\/+$/, "");
 
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
@@ -32,7 +35,9 @@ export default async function handler(req, res) {
     };
   } catch (error) {
     upstream = { ok: false, status: "error", message: error?.name === "AbortError" ? "Timeout ao validar o Supabase." : (error?.message || String(error)) };
-  } finally { clearTimeout(timer); }
+  } finally {
+    clearTimeout(timer);
+  }
 
   res.statusCode = 200;
   res.setHeader("Content-Type", "application/json; charset=utf-8");

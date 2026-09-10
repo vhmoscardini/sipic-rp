@@ -207,3 +207,47 @@ A aplicação utiliza o gateway local (`/api`) para evitar problemas de CORS. Se
 ### OpenWeather e Meteomatics
 
 O gateway consulta as duas fontes em paralelo quando as credenciais estiverem configuradas. O painel prioriza **Meteomatics `mix-obs`** para observação de estação, depois **OpenWeather** para condições atuais e mantém **Open-Meteo** como fonte de previsão/modelagem e radiação. Se as chaves não forem configuradas, o projeto continua funcionando com Open-Meteo. Nunca coloque essas credenciais em `app.js`, `config.js` ou `index.html`.
+
+
+## CAMS — integração isolada
+
+O endpoint `GET /api/cams-radiation` consulta o dataset CAMS Solar Radiation Time-Series do Copernicus quando a integração CAMS está disponível. Ele é executado separadamente do pipeline principal: falhas, fila, timeout ou ausência de `CAMS_API_KEY` não interrompem Open-Meteo, OpenWeather, Meteomatics, Supabase ou o endpoint `/api/solar`.
+
+Na Vercel, o endpoint possui **contingência automática por Open-Meteo Solar Radiation** e continua fornecendo GHI, BHI, DHI e DNI com `status: fallback`, evitando o antigo estado `ERRO`. Quando essa contingência externa está saudável, o console a classifica como **INFO/ONLINE**; `WARN` é usado apenas se também houver degradação da contingência e for necessário recorrer à referência solar calculada localmente. No servidor local, configure `CAMS_API_KEY` no `.env` para tentar a fonte CAMS oficial; se ela não responder, o mesmo fallback é aplicado.
+
+
+## Configuração da OpenWeather pelo painel
+
+Acesse a página **Dados e fontes** e use o cartão **Chave da API OpenWeather**. Cole a sua API Key e clique em **Salvar e testar**.
+
+- A chave é enviada somente ao servidor local do SIPIC-RP.
+- O servidor mantém a chave apenas em memória durante a sessão.
+- O navegador guarda a chave no `localStorage` para recarregá-la automaticamente quando o painel for aberto.
+- A chave nunca é devolvida em texto puro pela API; o status usa uma forma mascarada.
+- **Remover chave** apaga a chave da sessão do servidor e do `localStorage`.
+- O arquivo `iniciar.bat` não precisa mais conter a chave.
+
+Endpoints locais:
+- `GET /api/settings/openweather` — status da configuração (sem revelar a chave).
+- `POST /api/settings/openweather` — carrega uma chave na memória do servidor.
+- `DELETE /api/settings/openweather` — remove a chave da sessão.
+
+## Diagnóstico e OpenWeather
+
+A OpenWeather é validada de verdade quando a chave é cadastrada no painel. O endpoint `POST /api/settings/openweather` realiza uma chamada real ao Current Weather antes de aceitar a chave. A chave validada é armazenada apenas localmente em `.openweather-key`, ignorado pelo Git, e mantida em memória no servidor.
+
+O endpoint `GET /api/diagnostics` testa em paralelo Open-Meteo, OpenWeather, Meteomatics, CAMS, Open-Meteo Solar e Supabase e devolve status, HTTP, latência e mensagens de erro. O painel de Dados e fontes exibe esse resultado em um console de diagnóstico.
+
+Este projeto é Node.js e **não possui arquivo JAR**. Não é necessário Java para executar o servidor; o requisito é Node.js 20 ou superior.
+
+
+## Correção do painel OpenWeather
+Erros de resposta agora são normalizados no frontend e nunca são exibidos como `[object Object]`. O painel mostra mensagem, código e HTTP quando disponíveis.
+
+
+## Vercel — correção definitiva do painel OpenWeather
+A rota `POST /api/settings/openweather` é atendida diretamente pela função serverless catch-all. O painel recebe JSON consistente e não depende de gravação em arquivo local, evitando 404 e `[object Object]`.
+
+
+## Segurança da OpenWeather
+A configuração pelo painel foi removida. A chave é lida exclusivamente de `OPENWEATHER_API_KEY` no backend (`.env` local ou Environment Variables da Vercel). Nunca coloque a chave no frontend.

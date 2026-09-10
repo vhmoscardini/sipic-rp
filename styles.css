@@ -199,6 +199,20 @@ svg {
   white-space: nowrap;
 }
 
+.mission-title-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.mission-title-gif {
+  display: block;
+  width: min(100%, 1000px);
+  max-width: 100%;
+  height: auto;
+}
+
 .mission-title p {
   margin: 4px 0 0;
   overflow: hidden;
@@ -915,12 +929,12 @@ svg {
   position: relative;
   z-index: 4;
   display: block;
-  width: min(104%, 340px);
+  width: min(86%, 285px);
   aspect-ratio: 1;
   object-fit: cover;
   object-position: 48% 52%;
   border-radius: 50%;
-  transform: translate(-2%, -1%) scale(1.02);
+  transform: translate(0, 0) scale(1);
   transform-origin: center;
   border: 2px solid rgba(255, 198, 93, .72);
   box-shadow:
@@ -2658,18 +2672,25 @@ tbody tr:hover {
 
 .score-ring span,
 .score-ring small {
-  position: relative;
+  position: absolute;
+  left: 50%;
   z-index: 1;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 .score-ring span {
+  top: 50%;
+  transform: translate(-50%, -78%);
   font-family: var(--font-mono);
   font-size: 25px;
   font-weight: 600;
 }
 
 .score-ring small {
-  margin-top: -36px;
+  top: 50%;
+  margin: 0;
+  transform: translate(-50%, 48%);
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 8px;

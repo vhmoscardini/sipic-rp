@@ -3,7 +3,7 @@
   "version": "1.3.3",
   "private": true,
   "type": "module",
-  "description": "SIPIC-RP: dashboard científico com frontend estático e API serverless compatível com Vercel.",
+  "description": "SIPIC-RP: dashboard cient\u00edfico com frontend est\u00e1tico e API serverless compat\u00edvel com Vercel.",
   "engines": {
     "node": ">=20"
   },

@@ -308,3 +308,7 @@ O índice atual é **experimental**, não clínico nem oficial. Combina:
 - vegetação/NDVI.
 
 O retorno usa as classes `low`, `moderate`, `high` e `critical`. O frontend traduz essas classes e mantém o aviso científico visível.
+
+### GET /weather-comparison
+
+Compara Open-Meteo e OpenWeather para Ribeirão Preto/SP. Retorna os valores normalizados de cada fonte, diferença absoluta, diferença relativa, quantidade de métricas comparáveis e uma interpretação agregada. Uma fonte indisponível não invalida os dados da outra.

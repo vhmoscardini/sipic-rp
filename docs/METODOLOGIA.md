@@ -82,3 +82,9 @@ Não existe transferência direta de coeficientes venusianos para a cidade. A co
 | Previsão por setor | Predição experimental |
 | Cenário de arborização | Simulação hipotética |
 | Vênus | Referência teórica e didática |
+
+## Comparação entre fontes meteorológicas
+
+O SIPIC-RP trata Open-Meteo e OpenWeather como **fontes independentes**, e não como uma única fonte híbrida. Para o mesmo ponto geográfico, o endpoint `/api/weather-comparison` consulta ambas em paralelo, normaliza as variáveis comuns e calcula diferença absoluta e diferença relativa. Divergências não são automaticamente classificadas como erro, pois podem decorrer de modelos numéricos, fontes de observação, resolução espacial, horários de atualização e métodos de interpolação distintos. A comparação tem finalidade de **consistência e rastreabilidade**, não de declarar uma fonte como verdadeira.
+
+As variáveis comparadas são temperatura, sensação térmica, umidade relativa, pressão atmosférica, velocidade do vento, precipitação e nebulosidade. Quando uma fonte está indisponível ou não possui uma métrica, o sistema registra `N/D` e preserva a independência das demais fontes.

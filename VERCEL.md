@@ -1,22 +1,30 @@
 # SIPIC-RP — Deploy na Vercel
 
-## Deploy
+## 1. Deploy
 
-Importe o repositório Git na Vercel. O frontend é estático e as rotas `/api/*` usam funções Node.js em `api/`.
+Suba esta pasta para um repositório Git e importe o projeto na Vercel. Não é necessário `npm install` para a aplicação principal.
 
-## OpenWeather
+O frontend é servido como arquivos estáticos e as rotas `/api/*` usam `api/[...path].mjs` como função Node.js.
 
-Para produção, configure `OPENWEATHER_API_KEY` em **Vercel → Settings → Environment Variables** e faça um novo deploy. A chave não deve ser colocada em `config.js`, `app.js`, `index.html` ou commitada no Git.
+## 2. OpenWeather
 
-Localmente, use um `.env` na raiz:
+Há duas formas de configurar a chave:
 
-```env
-OPENWEATHER_API_KEY=sua_chave
-```
+### Painel do SIPIC-RP
 
-O `.env` é ignorado pelo Git.
+No painel **Dados e fontes**, cole a chave e clique em **Salvar e testar**. A aplicação mantém a chave no `localStorage` do navegador e a envia somente para o backend SIPIC-RP através do header `X-SIPIC-OpenWeather-Key` em HTTPS. A chave nunca é enviada diretamente do navegador para a OpenWeather.
 
-## Variáveis opcionais
+Como funções da Vercel são stateless, não use o arquivo `.openweather-key` como mecanismo de persistência em produção.
+
+### Recomendado para produção
+
+Em Vercel → Settings → Environment Variables, crie:
+
+`OPENWEATHER_API_KEY`
+
+O valor deve ser a chave real. Depois faça um novo deploy.
+
+## 3. Variáveis opcionais
 
 - `SIPIC_API_BASE_URL`
 - `OPENWEATHER_API_KEY`
@@ -24,8 +32,10 @@ O `.env` é ignorado pelo Git.
 - `METEOMATICS_PASSWORD`
 - `CAMS_API_KEY`
 - `REQUEST_TIMEOUT_MS`
+- `DIRECT_SOURCE_TIMEOUT_MS`
+- `API_CACHE_TTL_MS`
 
-## Rotas principais
+## 4. Rotas principais
 
 - `/api/health`
 - `/api/dashboard`
@@ -37,8 +47,21 @@ O `.env` é ignorado pelo Git.
 - `/api/diagnostics/openweather`
 - `/api/logs`
 - `/api/settings/openweather`
+- `/api/settings/openweather/test`
 - `/api/openapi`
 
-## Runtime
+## 5. Diagnóstico OpenWeather
 
-Esta versão não declara `runtime` dentro de `vercel.json`. A Vercel detecta automaticamente as funções Node.js pelos arquivos `.mjs`, evitando configurações de runtime incompatíveis com o CLI.
+O painel separa DNS, TCP/443, TLS e HTTP/API. Em ambiente serverless, um timeout de rede pode ser externo à aplicação; o diagnóstico ajuda a identificar a etapa.
+
+## 6. Observação sobre a API Key no painel
+
+O uso pelo painel é conveniente para testes e demonstrações. Para produção, prefira `OPENWEATHER_API_KEY` nas Environment Variables da Vercel, porque a chave não precisa ser mantida no navegador.
+
+## 7. Correção de runtime
+
+Esta versão não declara `runtime` dentro de `vercel.json`. A Vercel detecta automaticamente a função Node.js pelo arquivo `api/[...path].mjs`. Isso evita o erro `Function Runtimes must have a valid version` causado por configurações de runtime incompatíveis com o CLI.
+
+## 8. Importante sobre timeouts
+
+A Vercel executa funções serverless com limites de duração que variam conforme o plano. Para produção, mantenha as requisições externas com timeout menor que o limite do plano e prefira `OPENWEATHER_API_KEY` em Environment Variables.

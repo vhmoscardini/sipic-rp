@@ -53,8 +53,17 @@ export async function validateKey(key) {
   const timer = setTimeout(() => controller.abort(), 12_000);
   const started = Date.now();
   try {
-    const params = new URLSearchParams({ lat: String(LOCATION.latitude), lon: String(LOCATION.longitude), appid: key, units: "metric", lang: "pt_br" });
-    const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?${params}`, { signal: controller.signal, headers: { Accept: "application/json" } });
+    const params = new URLSearchParams({
+      lat: String(LOCATION.latitude),
+      lon: String(LOCATION.longitude),
+      appid: key,
+      units: "metric",
+      lang: "pt_br",
+    });
+    const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?${params}`, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
     let data = null;
     try { data = await response.json(); } catch {}
     const latency_ms = Date.now() - started;
@@ -72,7 +81,9 @@ export async function validateKey(key) {
       throw timeout;
     }
     throw error;
-  } finally { clearTimeout(timer); }
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export { state };
