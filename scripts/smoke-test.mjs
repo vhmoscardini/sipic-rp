@@ -10,6 +10,8 @@ const checks = [
   ["/sensors", (d) => d.ok && Array.isArray(d.network?.stations)],
   ["/analytics?hours=24", (d) => d.ok && Array.isArray(d.observations)],
   ["/openapi", (d) => d.openapi === "3.1.0"],
+  ["/diagnostics", (d) => d.ok && d.checks && typeof d.checks === "object"],
+  ["/weather-comparison", (d) => d.ok && d.sources && d.comparison],
 ];
 
 let failed = false;
