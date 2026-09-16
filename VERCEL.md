@@ -65,3 +65,18 @@ Esta versão não declara `runtime` dentro de `vercel.json`. A Vercel detecta au
 ## 8. Importante sobre timeouts
 
 A Vercel executa funções serverless com limites de duração que variam conforme o plano. Para produção, mantenha as requisições externas com timeout menor que o limite do plano e prefira `OPENWEATHER_API_KEY` em Environment Variables.
+
+## Banco científico principal — versão 1.4.0
+
+Configure no projeto Vercel, em **Settings → Environment Variables**:
+
+```text
+SIPIC_PRIMARY_DB=true
+SUPABASE_URL=https://SEU-PROJETO.supabase.co
+SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+```
+
+A service role é usada exclusivamente no backend para persistir as medições e previsões. Ela nunca deve ser colocada no frontend.
+
+Antes do deploy, execute `supabase/banco-principal.sql` no projeto Supabase. O dashboard passa a priorizar o banco científico e o gateway mantém a Edge Function/fontes públicas como contingência quando o banco principal não estiver configurado.

@@ -251,3 +251,7 @@ A rota `POST /api/settings/openweather` é atendida diretamente pela função se
 
 ## Segurança da OpenWeather
 A configuração pelo painel foi removida. A chave é lida exclusivamente de `OPENWEATHER_API_KEY` no backend (`.env` local ou Environment Variables da Vercel). Nunca coloque a chave no frontend.
+
+## Banco científico principal
+
+A versão final inclui o banco científico consolidado em `supabase/banco-principal.sql` e a migration `supabase/migrations/20260910000000_sipic_scientific_primary.sql`. Para ativá-lo como fonte principal do dashboard, consulte `docs/BANCO-PRINCIPAL.md` e configure `SIPIC_PRIMARY_DB=true` com as credenciais do Supabase no ambiente do backend.

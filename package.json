@@ -1,9 +1,9 @@
 {
   "name": "sipic-rp-local",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
-  "description": "SIPIC-RP: dashboard cient\u00edfico com frontend est\u00e1tico e API serverless compat\u00edvel com Vercel.",
+  "description": "SIPIC-RP: dashboard científico com banco PostgreSQL científico como fonte principal e APIs meteorológicas integradas.",
   "engines": {
     "node": ">=20"
   },

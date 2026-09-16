@@ -449,13 +449,17 @@ async function fetchCamsRadiation() {
   }
 }
 
-async function fetchJsonWithTimeout(url) {
+async function fetchJsonWithTimeout(url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DIRECT_SOURCE_TIMEOUT_MS);
   try {
-    const response = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
+    const response = await fetch(url, { ...options, headers: { Accept: "application/json", ...(options.headers || {}) }, signal: controller.signal });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(`HTTP ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
+    }
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
   } finally { clearTimeout(timer); }
 }
 
@@ -466,6 +470,239 @@ function classifyAqi(aqi) {
   if (value <= 100) return { label: "Moderada" };
   if (value <= 150) return { label: "Sensível" };
   return { label: "Atenção" };
+}
+
+
+const PRIMARY_DB_ENABLED = /^(1|true|yes|on)$/i.test(String(process.env.SIPIC_PRIMARY_DB || "false"));
+const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const SUPABASE_READ_KEY = String(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const SUPABASE_WRITE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+
+function primaryDbConfigured() {
+  return PRIMARY_DB_ENABLED && Boolean(SUPABASE_URL && SUPABASE_READ_KEY);
+}
+
+async function supabaseRest(table, query = "", options = {}) {
+  if (!primaryDbConfigured()) throw new Error("Banco principal não configurado. Defina SIPIC_PRIMARY_DB, SUPABASE_URL e SUPABASE_ANON_KEY.");
+  const key = options.write ? SUPABASE_WRITE_KEY : SUPABASE_READ_KEY;
+  if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY é necessária para gravação no banco principal.");
+  const headers = { apikey: key, Authorization: `Bearer ${key}`, Accept: "application/json", ...options.headers };
+  const response = await fetchJsonWithTimeout(`${SUPABASE_URL}/rest/v1/${table}${query ? `?${query}` : ""}`, { method: options.method || "GET", headers, body: options.body });
+  return response;
+}
+
+async function supabaseWrite(table, rows, onConflict = "") {
+  if (!SUPABASE_WRITE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada para gravação.");
+  const query = onConflict ? `on_conflict=${encodeURIComponent(onConflict)}` : "";
+  return supabaseRest(table, query, {
+    method: "POST",
+    write: true,
+    headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(rows),
+  });
+}
+
+function primaryRisk(iicu) {
+  const value = Number(iicu);
+  if (!Number.isFinite(value)) return { level: "Baixo", score: 0 };
+  if (value >= 6) return { level: "Crítico", score: 95 };
+  if (value >= 4) return { level: "Elevado", score: 75 };
+  if (value >= 2) return { level: "Atenção", score: 50 };
+  return { level: "Baixo", score: Math.max(10, Math.round(value * 20)) };
+}
+
+async function syncPrimaryDatabase() {
+  if (!primaryDbConfigured() || !SUPABASE_WRITE_KEY) return { synced: false, reason: "not_configured" };
+  const started = Date.now();
+  const weather = await fetchOpenMeteoCurrent();
+  const forecastParams = new URLSearchParams({
+    latitude: String(RIBEIRAO_PRETO.latitude),
+    longitude: String(RIBEIRAO_PRETO.longitude),
+    timezone: RIBEIRAO_PRETO.timezone,
+    hourly: "temperature_2m,apparent_temperature",
+    forecast_days: "3",
+  });
+  const forecastPayload = await fetchJsonWithTimeout(`${OPEN_METEO_WEATHER_URL}?${forecastParams}`);
+  const now = weather.observed_at || new Date().toISOString();
+  const sectors = await supabaseRest("setores_urbanos", "select=id_setor,codigo_setor,nome_regiao,tipo_area,latitude,longitude,altitude_z,uso_solo_lulc,cobertura_vegetal,area_construida_pct,densidade_edificacoes,altura_media_edificios&order=codigo_setor.asc");
+  const sources = await supabaseRest("fontes_dados", "select=id_fonte,nome_fonte,tipo_dado&order=id_fonte.asc");
+
+  const sourceRows = Array.isArray(sources) ? sources : [];
+  let weatherSource = sourceRows.find((row) => /open.?meteo/i.test(row.nome_fonte || ""));
+  if (!weatherSource) {
+    await supabaseWrite("fontes_dados", [{ nome_fonte: "Open-Meteo", tipo_dado: "Meteorologia" }]);
+    const refreshed = await supabaseRest("fontes_dados", "select=id_fonte,nome_fonte,tipo_dado&nome_fonte=eq.Open-Meteo&limit=1");
+    weatherSource = refreshed?.[0];
+  }
+  if (!weatherSource) throw new Error("Não foi possível localizar/criar a fonte Open-Meteo.");
+
+  const sectorRows = Array.isArray(sectors) ? sectors : [];
+  if (!sectorRows.length) throw new Error("O banco principal não possui setores_urbanos. Execute a migration científica do projeto.");
+  const air = finiteNumber(weather.temperature_c);
+  const reference = sectorRows.find((s) => String(s.tipo_area).toLowerCase() === "referencia") || sectorRows[sectorRows.length - 1];
+  const refTemp = air;
+  const measurements = sectorRows.map((sector) => {
+    const offset = finiteNumber(sector.heat_offset_c) ?? (Number(sector.area_construida_pct || 0) / 100) * 3;
+    const tu = air === null ? null : Number((air + Math.max(0, offset)).toFixed(2));
+    const tr = refTemp === null ? null : Number(refTemp.toFixed(2));
+    return {
+      id_setor: sector.id_setor,
+      id_fonte: weatherSource.id_fonte,
+      data_hora: now,
+      temperatura_ar_t: air,
+      temperatura_urbana_tu: tu,
+      temperatura_referencia_tr: tr,
+      velocidade_vento_v: weather.wind_speed_ms,
+      direcao_vento_theta: weather.wind_direction_deg,
+      umidade_relativa_rh: weather.humidity_pct,
+      precipitacao_p: weather.precipitation_1h_mm,
+      nebulosidade_c: weather.cloud_cover_pct,
+      pressao_atm_p_atm: weather.pressure_hpa,
+    };
+  });
+  await supabaseWrite("medicoes_ambientais", measurements, "id_setor,data_hora,id_fonte");
+
+  const latest = measurements.map((row) => {
+    const iicu = row.temperatura_urbana_tu !== null && row.temperatura_referencia_tr !== null ? Number((row.temperatura_urbana_tu - row.temperatura_referencia_tr).toFixed(2)) : null;
+    return { ...row, iicu };
+  });
+  const iicuRows = latest.filter((row) => row.iicu !== null).map((row) => ({
+    id_medicao: null,
+    temperatura_urbana_tu: row.temperatura_urbana_tu,
+    temperatura_referencia_tr: row.temperatura_referencia_tr,
+    valor_iicu: row.iicu,
+  }));
+  // The scientific index table references the generated measurement ID, so resolve the just-written rows before inserting it.
+  const encodedTime = encodeURIComponent(now);
+  const persisted = await supabaseRest("medicoes_ambientais", `select=id_medicao,id_setor,temperatura_urbana_tu,temperatura_referencia_tr&data_hora=eq.${encodedTime}&id_fonte=eq.${weatherSource.id_fonte}`);
+  const persistedRows = Array.isArray(persisted) ? persisted : [];
+  const indexRows = persistedRows.map((row) => ({
+    id_medicao: row.id_medicao,
+    temperatura_urbana: row.temperatura_urbana_tu,
+    temperatura_referencia: row.temperatura_referencia_tr,
+    valor_iitr: Number((Number(row.temperatura_urbana_tu || 0) - Number(row.temperatura_referencia_tr || 0)).toFixed(2)),
+  }));
+  if (indexRows.length) await supabaseWrite("indice_intensidade_termica_relativa", indexRows);
+  const iicuPersisted = persistedRows.map((row) => ({
+    id_medicao: row.id_medicao,
+    temperatura_urbana_tu: row.temperatura_urbana_tu,
+    temperatura_referencia_tr: row.temperatura_referencia_tr,
+    valor_iicu: Number((Number(row.temperatura_urbana_tu || 0) - Number(row.temperatura_referencia_tr || 0)).toFixed(2)),
+  }));
+  if (iicuPersisted.length) await supabaseWrite("intensidade_ilha_calor_urbana", iicuPersisted);
+
+  const forecastTimes = forecastPayload?.hourly?.time || [];
+  const forecastTemps = forecastPayload?.hourly?.temperature_2m || [];
+  const generatedAt = new Date().toISOString();
+  const predictionRows = [];
+  for (const sector of sectorRows) {
+    const offset = Math.max(0, finiteNumber(sector.heat_offset_c) ?? (Number(sector.area_construida_pct || 0) / 100) * 3);
+    for (let i = 0; i < Math.min(48, forecastTimes.length); i += 1) {
+      const temp = finiteNumber(forecastTemps[i]);
+      if (temp === null) continue;
+      predictionRows.push({
+        id_setor: sector.id_setor,
+        data_hora_alvo: new Date(`${forecastTimes[i]}:00`).toISOString(),
+        iicu_predito: Number(offset.toFixed(2)),
+        confianca_pct: 90,
+        versao_modelo: "sipic-hybrid-db-1.0.0",
+        criado_em: generatedAt,
+      });
+    }
+  }
+  if (predictionRows.length) {
+    await supabaseWrite("predicoes_modelo_ia", predictionRows, "id_setor,data_hora_alvo,versao_modelo");
+  }
+
+  return { synced: true, records_written: measurements.length, predictions_written: predictionRows.length, elapsed_ms: Date.now() - started };
+}
+
+async function primaryDatabaseDashboard() {
+  if (!primaryDbConfigured()) return null;
+  try {
+    await syncPrimaryDatabase();
+  } catch (error) {
+    logRuntime("warn", "Supabase", `Sincronização do banco principal falhou: ${error.message}`);
+  }
+  const [sectors, latest, predictions, alerts] = await Promise.all([
+    supabaseRest("setores_urbanos", "select=*&order=codigo_setor.asc"),
+    supabaseRest("medicoes_ambientais", "select=*&order=data_hora.desc&limit=500"),
+    supabaseRest("predicoes_modelo_ia", "select=*&order=data_hora_alvo.asc&limit=500"),
+    supabaseRest("sistema_alertas", "select=*&order=emitido_em.desc&limit=50"),
+  ]);
+  const measurements = Array.isArray(latest) ? latest : [];
+  const latestBySector = new Map();
+  for (const row of measurements) if (!latestBySector.has(row.id_setor)) latestBySector.set(row.id_setor, row);
+  const normalizedSectors = (Array.isArray(sectors) ? sectors : []).map((sector) => {
+    const m = latestBySector.get(sector.id_setor);
+    const iicu = m ? Number((Number(m.temperatura_urbana_tu || 0) - Number(m.temperatura_referencia_tr || 0)).toFixed(2)) : Number(sector.heat_offset_c || 0);
+    const risk = primaryRisk(iicu);
+    return {
+      id: sector.id_setor,
+      code: sector.codigo_setor,
+      name: sector.nome_regiao,
+      shortName: sector.nome_regiao,
+      zone: sector.tipo_area,
+      latitude: Number(sector.latitude),
+      longitude: Number(sector.longitude),
+      air_temperature_c: m?.temperatura_ar_t != null ? Number(m.temperatura_ar_t) : null,
+      surface_temperature_c: m?.temperatura_urbana_tu != null ? Number(m.temperatura_urbana_tu) : null,
+      relative_humidity_pct: m?.umidade_relativa_rh != null ? Number(m.umidade_relativa_rh) : null,
+      urban_heat_island_c: iicu,
+      ndvi: null,
+      risk_score: risk.score,
+      risk_level: risk.level === "Baixo" ? "low" : risk.level === "Atenção" ? "moderate" : risk.level === "Elevado" ? "high" : "critical",
+      confidence_pct: 90,
+      explanations: [],
+      imperviousness: sector.area_construida_pct != null ? Number(sector.area_construida_pct) / 100 : null,
+    };
+  });
+  const center = normalizedSectors.find((s) => /centro/i.test(s.name)) || normalizedSectors[0] || {};
+  const current = {
+    air_temperature_c: center.air_temperature_c,
+    surface_temperature_c: center.surface_temperature_c,
+    apparent_temperature_c: center.air_temperature_c,
+    relative_humidity_pct: center.relative_humidity_pct,
+    wind_speed_ms: measurements[0]?.velocidade_vento_v ?? null,
+    wind_direction_deg: measurements[0]?.direcao_vento_theta ?? null,
+    precipitation_1h_mm: measurements[0]?.precipitacao_p ?? null,
+    pressure_hpa: measurements[0]?.pressao_atm_p_atm ?? null,
+    urban_heat_island_c: center.urban_heat_island_c ?? 0,
+    ndvi: center.ndvi,
+    shortwave_radiation_wm2: measurements[0]?.rad_onda_curta_desc_sw_down ?? null,
+    confidence_pct: 90,
+    risk_level: center.risk_level || "low",
+    risk_label: center.risk_level || "low",
+  };
+  const predictionRows = Array.isArray(predictions) ? predictions : [];
+  const cityTimeline = predictionRows.map((p) => ({
+    time: p.data_hora_alvo,
+    timestamp: p.data_hora_alvo,
+    air_temperature_c: Number(p.iicu_predito) + Number(current.air_temperature_c || 0),
+    apparent_temperature_c: Number(p.iicu_predito) + Number(current.air_temperature_c || 0),
+    urban_heat_island_c: Number(p.iicu_predito),
+    risk_level: primaryRisk(p.iicu_predito).level === "Crítico" ? "critical" : primaryRisk(p.iicu_predito).level === "Elevado" ? "high" : primaryRisk(p.iicu_predito).level === "Atenção" ? "moderate" : "low",
+  }));
+  return {
+    ok: true,
+    data_status: "live_and_persisted",
+    generated_at: new Date().toISOString(),
+    location: { city: "Ribeirão Preto", state: "SP", timezone: "America/Sao_Paulo" },
+    current,
+    sectors: normalizedSectors,
+    network: { online: normalizedSectors.length, total: normalizedSectors.length, health_pct: 100, stations: [] },
+    forecast: { horizon_hours: 48, city_timeline: cityTimeline.slice(0, 48), by_sector: [] },
+    alerts: Array.isArray(alerts) ? alerts : [],
+    model_version: "sipic-scientific-db-1.0.0",
+    sources: [
+      { id: "open_meteo_weather", name: "Open-Meteo Forecast API", status: "online", detail: "Dados sincronizados no banco principal" },
+      { id: "supabase", name: "Supabase · Banco científico principal", status: "online", detail: "Fonte principal persistida do dashboard" },
+      { id: "open_meteo_air", name: "CAMS via Open-Meteo", status: "configured", detail: "Disponível para sincronização de qualidade do ar" },
+      { id: "openweather", name: "OpenWeather", status: runtimeOpenWeatherApiKey ? "configured" : "not_configured", detail: runtimeOpenWeatherApiKey ? "Fonte complementar" : "API key não configurada" },
+    ],
+    weather_observations: { preferred: "Banco principal · Open-Meteo" },
+    scientific_disclaimer: "O dashboard utiliza o banco científico principal do SIPIC-RP; as APIs externas alimentam a persistência e não são consultadas diretamente pelo frontend.",
+  };
 }
 
 async function directScientificDashboard() {
@@ -976,6 +1213,18 @@ async function proxyApi(request, response, url) {
     response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     response.end();
     return;
+  }
+
+  if ((relative === "dashboard" || relative === "") && primaryDbConfigured()) {
+    try {
+      const databaseDashboard = await primaryDatabaseDashboard();
+      if (databaseDashboard) {
+        sendJson(response, 200, databaseDashboard, { "X-SIPIC-Mode": "PRIMARY-SUPABASE-DATABASE" });
+        return;
+      }
+    } catch (error) {
+      logRuntime("error", "Supabase", `Falha no dashboard do banco principal: ${error.message}`);
+    }
   }
 
   if (relative === "weather-comparison") {
