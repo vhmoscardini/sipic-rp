@@ -28,7 +28,7 @@
   --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.2);
   --radius: 6px;
   --radius-sm: 4px;
-  --topbar-height: 76px;
+  --topbar-height: 90px;
   --footer-height: 32px;
   --sidebar-width: 222px;
   --font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -188,29 +188,66 @@ svg {
 
 .mission-title h1 {
   margin: 0;
-  overflow: hidden;
+  overflow: visible;
   color: #e8f0f6;
-  font-size: clamp(14px, 1.3vw, 20px);
+  font-size: clamp(15px, 1.45vw, 22px);
   font-weight: 650;
   letter-spacing: 0.025em;
   line-height: 1.2;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .mission-title-heading {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-width: 0;
+  overflow: visible;
+}
+
+.mission-title-heading::after {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: -2px;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(49, 211, 232, 0.72), rgba(255, 115, 21, 0.5), transparent);
+  box-shadow: 0 0 10px rgba(49, 211, 232, 0.34);
+  opacity: 0.7;
 }
 
 .mission-title-gif {
   display: block;
-  width: min(100%, 1000px);
+  width: min(100%, 1180px);
   max-width: 100%;
   height: auto;
+  min-height: 42px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 5px rgba(49, 211, 232, 0.18)) drop-shadow(0 0 12px rgba(36, 139, 208, 0.12));
+  transform-origin: center;
+  animation: mission-title-breathe 4.8s ease-in-out infinite;
+}
+
+@keyframes mission-title-breathe {
+  0%, 100% {
+    opacity: 0.92;
+    transform: scale(0.998);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.002);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mission-title-gif {
+    animation: none;
+  }
 }
 
 .mission-title p {

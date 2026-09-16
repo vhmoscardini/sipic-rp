@@ -300,7 +300,8 @@
     const method = String(options.method || "GET").toUpperCase();
     const headers = { Accept: "application/json", ...(options.headers || {}) };
     if (options.body !== undefined && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-    for (let attempt = 0; attempt < (options.retry === false ? 1 : 2); attempt += 1) {
+    const maxAttempts = options.retry === false ? 1 : 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), CONFIG.requestTimeoutMs);
       try {
@@ -322,7 +323,9 @@
         return payload;
       } catch (error) {
         lastError = error?.name === "AbortError" ? new Error("A API excedeu o tempo limite de resposta.") : error;
-        if (attempt === 0 && options.retry !== false) await new Promise((resolve) => setTimeout(resolve, 700));
+        if (attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 650 * (attempt + 1)));
+        }
       } finally { clearTimeout(timeout); }
     }
     throw lastError;
@@ -698,6 +701,21 @@
     return task;
   }
 
+  async function connectApisAutomatically({ refresh = true, announce = true } = {}) {
+    renderApiStatus();
+    try {
+      return await loadDashboardData(refresh, announce);
+    } catch (error) {
+      // Tenta novamente em segundo plano, sem exigir qualquer clique do usuário.
+      window.setTimeout(() => {
+        if (state.api.status === "error" && !state.api.loading) {
+          void loadDashboardData(false, false).catch(() => {});
+        }
+      }, 2500);
+      throw error;
+    }
+  }
+
   function setPage(pageId, updateHash = true) {
     const page = $(`#page-${pageId}`);
     if (!page) return;
@@ -707,7 +725,10 @@
     state.currentPage = pageId;
 
     if (updateHash) history.replaceState(null, "", `#${pageId}`);
-    $("#mainContent")?.scrollTo({ top: 0, behavior: "smooth" });
+    const mainContent = $("#mainContent");
+    if (typeof mainContent?.scrollTo === "function") {
+      mainContent.scrollTo({ top: 0, behavior: "smooth" });
+    }
     closeMobileSidebar();
 
     const title = page.dataset.title || "SIPIC-RP";
@@ -2130,6 +2151,9 @@
   }
 
   function initialize() {
+    // Conexão automática é a primeira ação da abertura; o restante da interface
+    // continua sendo montado enquanto os dados chegam.
+    void connectApisAutomatically({ refresh: true, announce: true }).catch(() => {});
     renderCityScene();
     renderMiniCity();
     renderSparkline("#venusWave", createWaveData(1448, 150, 0.33), COLORS.orange);
@@ -2156,7 +2180,6 @@
 
     const initialPage = location.hash.replace("#", "");
     setPage(initialPage && $(`#page-${initialPage}`) ? initialPage : "overview", false);
-    void loadDashboardData(false, true).catch(() => {});
   }
 
 
