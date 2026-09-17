@@ -415,6 +415,50 @@
     )[0];
   }
 
+  function renderOperationalEnhancements() {
+    const data = state.api.dashboard;
+    const current = data?.current;
+    if (!current) return;
+    const risk = String(current.risk_level || "monitoring").toLowerCase();
+    const labels = { critical: "ALERTA CRÍTICO", high: "ALERTA", moderate: "ATENÇÃO", low: "MONITORANDO", monitoring: "MONITORANDO" };
+    const alertCard = $("#operationalAlertCard");
+    alertCard?.classList.remove("risk-critical", "risk-high", "risk-moderate", "risk-low");
+    alertCard?.classList.add(`risk-${risk}`);
+    setText("#operationalAlertLevel", labels[risk] || "MONITORANDO");
+    setText("#operationalAlertTitle", data.alerts?.[0]?.title || current.risk_label || "Monitoramento ativo");
+    setText("#operationalAlertText", data.alerts?.[0]?.message || "O sistema continua acompanhando temperatura, umidade, vento e condições dos setores.");
+    setText("#operationalFreshness", data.generated_at ? formatAge(data.generated_at) : "--");
+    setText("#operationalFreshnessDetail", data.generated_at ? `Ciclo gerado em ${formatForecastTime(data.generated_at, false)}` : "Ciclo ainda não carregado");
+    const sourceTotal = data.sources?.length || 0;
+    const sourceOnline = (data.sources || []).filter(x => !["offline", "error", "degraded"].includes(x.status)).length;
+    const db = data.sources?.find(x => x.id === "supabase");
+    const health = Number(data.network?.health_pct ?? 0);
+    setText("#operationalSystemHealth", health ? `${pt(health, 0)}% operacional` : `${sourceOnline}/${sourceTotal} fontes`);
+    setText("#operationalSystemDetail", `${sourceOnline}/${sourceTotal} fontes · banco ${db?.status === "online" ? "online" : statusLabel(db?.status)}`);
+    setText("#healthApiCard", state.api.status === "online" ? "ONLINE" : "CONTINGÊNCIA");
+    setText("#healthApiDetail", state.api.latencyMs !== null ? `${Math.round(state.api.latencyMs)} ms` : "aguardando resposta");
+    setText("#healthDbCard", db?.status === "online" ? "ONLINE" : statusLabel(db?.status));
+    setText("#healthDbDetail", `${data.network?.total ?? 0} estações catalogadas`);
+    setText("#healthSourcesCard", `${sourceOnline}/${sourceTotal}`);
+    setText("#healthSourcesDetail", sourceTotal ? "fontes operacionais" : "aguardando ciclo");
+    setText("#healthModelCard", data.model_version || "SIPIC-Hybrid");
+    setText("#healthModelDetail", data.forecast ? `${data.forecast.horizon_hours ?? 48} h de horizonte` : "aguardando previsão");
+    const badge = $("#systemHealthBadge");
+    if (badge) { badge.className = "system-health-badge"; badge.classList.add(sourceOnline === sourceTotal ? "good" : "partial"); badge.textContent = sourceOnline === sourceTotal ? "OPERACIONAL" : "ATENÇÃO"; }
+
+    const timeline = data.forecast?.city_timeline || [];
+    const six = timeline.slice(0, 6);
+    const host = $("#sixHourForecast");
+    if (host && six.length) host.innerHTML = six.map((row, i) => `<div><span>${formatForecastTime(row.time, false) || `+${i}h`}</span><strong>${pt(row.air_temperature_c ?? row.apparent_temperature_c, 1)}°</strong><small>${statusLabel(row.risk_level || "moderate")}</small></div>`).join("");
+
+    setText("#driverTemp", `${pt(current.air_temperature_c, 1)} °C`);
+    setText("#driverHumidity", `${pt(current.relative_humidity_pct, 0)}%`);
+    setText("#driverWind", `${pt(current.wind_speed_ms, 1)} m/s`);
+    setText("#driverVegetation", `${pt(current.ndvi, 2)} NDVI`);
+    const vegetationText = Number(current.ndvi) < 0.3 ? "baixa cobertura vegetal" : "cobertura vegetal moderada";
+    setText("#driverExplanation", `Temperatura de ${pt(current.air_temperature_c, 1)} °C, umidade de ${pt(current.relative_humidity_pct, 0)}% e vento de ${pt(current.wind_speed_ms, 1)} m/s compõem o contexto atual; o setor apresenta ${vegetationText}.`);
+  }
+
   function renderApiStatus() {
     const data = state.api.dashboard;
     const health = state.api.health;
@@ -560,6 +604,7 @@
     setText("#sensorBarPhysicalValue", physicalStations.length ? `${physicalOnline} / ${physicalStations.length}` : "API pronta");
     setBar("#sensorBarPhysical", physicalStations.length ? (physicalOnline / physicalStations.length) * 100 : 20);
 
+    renderOperationalEnhancements();
     renderApiStatus();
     renderVisibleCharts();
   }

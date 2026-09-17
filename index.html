@@ -132,6 +132,28 @@
               </div>
             </div>
 
+            <section class="operational-strip" aria-label="Resumo operacional">
+              <article class="operational-alert" id="operationalAlertCard">
+                <div class="operational-alert-icon"><svg class="icon"><use href="#i-alert"></use></svg></div>
+                <div class="operational-alert-copy">
+                  <span class="eyebrow">STATUS TÉRMICO ATUAL</span>
+                  <strong id="operationalAlertTitle">Monitoramento ativo</strong>
+                  <p id="operationalAlertText">Aguardando atualização das fontes e do modelo.</p>
+                </div>
+                <span class="operational-level" id="operationalAlertLevel">MONITORANDO</span>
+              </article>
+              <article class="operational-freshness">
+                <span class="eyebrow">ÚLTIMA ATUALIZAÇÃO</span>
+                <strong id="operationalFreshness">--</strong>
+                <small id="operationalFreshnessDetail">Ciclo ainda não carregado</small>
+              </article>
+              <article class="operational-system">
+                <span class="eyebrow">SAÚDE DO SISTEMA</span>
+                <strong id="operationalSystemHealth">--</strong>
+                <small id="operationalSystemDetail">fontes e persistência</small>
+              </article>
+            </section>
+
             <div class="hero-grid">
               <article class="panel hero-panel venus-panel">
                 <div class="panel-heading">
@@ -613,6 +635,22 @@
             </div>
           </article>
 
+          <article class="panel prediction-drivers-card">
+            <div class="panel-heading"><div><span class="eyebrow">EXPLICABILIDADE</span><h3>Por que o risco está mudando?</h3><p>Leitura resumida dos fatores atuais que influenciam a estimativa experimental.</p></div></div>
+            <div class="driver-grid" id="predictionDrivers">
+              <div><span>🌡️ Temperatura</span><strong id="driverTemp">--</strong><small>últimas condições</small></div>
+              <div><span>💧 Umidade</span><strong id="driverHumidity">--</strong><small>efeito no estresse</small></div>
+              <div><span>💨 Vento</span><strong id="driverWind">--</strong><small>ventilação</small></div>
+              <div><span>🌳 Vegetação</span><strong id="driverVegetation">--</strong><small>cobertura do setor</small></div>
+            </div>
+            <div class="driver-note" id="driverExplanation">Os fatores serão atualizados após o carregamento do ciclo.</div>
+          </article>
+
+          <article class="panel six-hour-card">
+            <div class="panel-heading"><div><span class="eyebrow">CURTO PRAZO</span><h3>Próximas 6 horas</h3><p>Resumo da trajetória prevista a partir do ciclo carregado.</p></div></div>
+            <div class="six-hour-grid" id="sixHourForecast"></div>
+          </article>
+
           <article class="panel alert-timeline-card">
             <div class="panel-heading"><div><h3>Linha do tempo de risco</h3><p>Classificação experimental de estresse térmico</p></div></div>
             <div class="alert-timeline" id="alertTimeline"></div>
@@ -751,6 +789,19 @@
           </article>
 
           
+
+          <article class="panel system-health-card">
+            <div class="panel-heading">
+              <div><span class="eyebrow">SAÚDE DO SISTEMA</span><h3>Status das integrações</h3><p>Visão operacional das fontes, banco, cache e modelo, sem expor credenciais.</p></div>
+              <span class="system-health-badge" id="systemHealthBadge">CONECTANDO</span>
+            </div>
+            <div class="system-health-grid">
+              <div><span>API</span><strong id="healthApiCard">--</strong><small id="healthApiDetail">--</small></div>
+              <div><span>Banco</span><strong id="healthDbCard">--</strong><small id="healthDbDetail">--</small></div>
+              <div><span>Fontes</span><strong id="healthSourcesCard">--</strong><small id="healthSourcesDetail">--</small></div>
+              <div><span>Modelo</span><strong id="healthModelCard">--</strong><small id="healthModelDetail">--</small></div>
+            </div>
+          </article>
 
           <article class="panel weather-comparison-card">
             <div class="panel-heading">
