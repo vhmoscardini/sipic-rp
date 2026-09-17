@@ -713,6 +713,7 @@
 
     $$(".app-page").forEach((item) => item.classList.toggle("active", item === page));
     $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.page === pageId));
+    $$(".mobile-nav-item").forEach((item) => item.classList.toggle("active", item.dataset.page === pageId));
     state.currentPage = pageId;
 
     if (updateHash) history.replaceState(null, "", `#${pageId}`);
@@ -1968,6 +1969,8 @@
 
   function setupEvents() {
     $$(".nav-item").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
+    $$(".mobile-nav-item[data-page]").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
+    $("#mobileMoreButton")?.addEventListener("click", openMobileSidebar);
     $$('[data-page-link]').forEach((button) => button.addEventListener("click", () => setPage(button.dataset.pageLink)));
 
     $("#mobileMenuButton")?.addEventListener("click", () => {
