@@ -133,6 +133,10 @@
                   <svg class="icon"><use href="#i-refresh"></use></svg>
                   Atualizar ciclo
                 </button>
+                <button class="small-button demo-button" id="demoModeButton">
+                  <svg class="icon"><use href="#i-play"></use></svg>
+                  Modo demonstração
+                </button>
               </div>
             </div>
 
@@ -624,7 +628,19 @@
           <article class="kpi-card"><span>Horas em risco</span><strong id="analyticsRiskHours">-- h</strong><small id="analyticsRiskHoursNote">nível alto ou crítico</small></article>
           <article class="kpi-card"><span>Confiança média</span><strong id="analyticsConfidence">--%</strong><small>modelo de 48 h</small></article>
         </div>
-
+        <article class="panel historical-card">
+          <div class="panel-heading">
+            <div><span class="eyebrow">CONTEXTO HISTÓRICO</span><h3>Comparação histórica de referência</h3><p>Valores demonstrativos para contextualização visual; substitua pelos dados históricos validados quando disponíveis.</p></div>
+            <span class="data-mode-badge">REFERÊNCIA DEMONSTRATIVA</span>
+          </div>
+          <div class="historical-grid" id="historicalReferenceGrid">
+            <div><span>2022</span><strong>31,2 °C</strong><b><i style="--w:68%"></i></b></div>
+            <div><span>2023</span><strong>32,1 °C</strong><b><i style="--w:74%"></i></b></div>
+            <div><span>2024</span><strong>33,0 °C</strong><b><i style="--w:80%"></i></b></div>
+            <div><span>2025</span><strong>33,4 °C</strong><b><i style="--w:84%"></i></b></div>
+            <div><span>2026</span><strong>34,1 °C</strong><b><i style="--w:90%"></i></b></div>
+          </div>
+        </article>
         <div class="analytics-grid">
           <article class="panel wide-chart-card">
             <div class="panel-heading"><div><h3>Temperatura do ar — urbano × periurbano</h3><p id="analyticsSeriesStatus">Histórico persistido quando disponível · °C</p></div><div class="chart-legend"><span><i class="legend-line cyan"></i>Urbano</span><span><i class="legend-line blue"></i>Periurbano</span></div></div>
@@ -1090,6 +1106,15 @@
     <button class="mobile-nav-item" id="mobileMoreButton"><svg class="icon"><use href="#i-menu"></use></svg><span>Mais</span></button>
   </nav>
   <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <div class="demo-modal" id="demoModal" hidden role="dialog" aria-modal="true" aria-labelledby="demoModalTitle">
+    <div class="demo-modal-card">
+      <div class="panel-heading"><div><span class="eyebrow">MODO DEMONSTRAÇÃO</span><h3 id="demoModalTitle">Simulação de onda de calor</h3><p>Sequência ilustrativa para apresentação do funcionamento do SIPIC-RP. Não altera os dados reais nem as APIs.</p></div><button class="icon-button" id="closeDemoButton" aria-label="Fechar demonstração">×</button></div>
+      <div class="demo-sequence" id="demoSequence"></div>
+      <div class="demo-modal-footer"><span><i class="status-dot orange"></i>Simulação visual</span><button class="primary-button" id="playDemoButton"><svg class="icon"><use href="#i-play"></use></svg>Reproduzir sequência</button></div>
+    </div>
+  </div>
+
 
   <svg class="svg-sprite" aria-hidden="true" width="0" height="0">
     <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>

@@ -458,6 +458,20 @@
     const vegetationText = Number(current.ndvi) < 0.3 ? "baixa cobertura vegetal" : "cobertura vegetal moderada";
     setText("#driverExplanation", `Temperatura de ${pt(current.air_temperature_c, 1)} °C, umidade de ${pt(current.relative_humidity_pct, 0)}% e vento de ${pt(current.wind_speed_ms, 1)} m/s compõem o contexto atual; o setor apresenta ${vegetationText}.`);
   }
+  function openDemoModal() {
+    const modal = $("#demoModal");
+    const host = $("#demoSequence");
+    if (!modal || !host) return;
+    const values = [31, 33, 35, 37, 39, 38];
+    host.innerHTML = values.map((v, i) => `<div class="demo-step"><span>${10 + i}:00</span><strong>${v}°C</strong><b><i style="--w:${Math.min(100, 38 + i * 12)}%"></i></b><small>${v >= 38 ? "ALERTA" : v >= 35 ? "ATENÇÃO" : "NORMAL"}</small></div>`).join("");
+    modal.hidden = false;
+    document.body.classList.add("demo-open");
+  }
+  function closeDemoModal() { const modal = $("#demoModal"); if (modal) modal.hidden = true; document.body.classList.remove("demo-open"); }
+  function playDemoSequence() {
+    const steps = $$(".demo-step");
+    steps.forEach((el, i) => { el.classList.remove("is-active"); setTimeout(() => el.classList.add("is-active"), i * 280); });
+  }
 
   function renderApiStatus() {
     const data = state.api.dashboard;
@@ -2016,6 +2030,13 @@
     $$(".nav-item").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
     $$(".mobile-nav-item[data-page]").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
     $("#mobileMoreButton")?.addEventListener("click", openMobileSidebar);
+
+    $("#demoModeButton")?.addEventListener("click", openDemoModal);
+    $("#closeDemoButton")?.addEventListener("click", closeDemoModal);
+    $("#playDemoButton")?.addEventListener("click", playDemoSequence);
+    $("#demoModal")?.addEventListener("click", (event) => { if (event.target.id === "demoModal") closeDemoModal(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDemoModal(); });
+
     $$('[data-page-link]').forEach((button) => button.addEventListener("click", () => setPage(button.dataset.pageLink)));
 
     $("#mobileMenuButton")?.addEventListener("click", () => {
