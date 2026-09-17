@@ -56,6 +56,10 @@
           <svg class="icon"><use href="#i-dashboard"></use></svg>
           <span>Visão geral</span>
         </button>
+        <button class="nav-item" data-page="understanding">
+          <svg class="icon"><use href="#i-info"></use></svg>
+          <span>Sobre</span>
+        </button>
         <button class="nav-item" data-page="heatmap">
           <svg class="icon"><use href="#i-map"></use></svg>
           <span>Mapa térmico</span>
@@ -385,6 +389,136 @@
             </article>
           </aside>
         </div>
+      </section>
+
+      <section class="app-page" id="page-understanding" data-title="O que o SIPIC-RP faz?">
+        <div class="page-header">
+          <div>
+            <span class="eyebrow">CONHEÇA O SISTEMA · DOCUMENTAÇÃO SIPIC-RP</span>
+            <h2>O que o SIPIC-RP faz?</h2>
+            <p>Entenda, de forma visual, como a documentação e o banco de dados orientam o funcionamento do sistema — sem alterar a arquitetura existente.</p>
+          </div>
+        </div>
+
+            <article class="panel scientific-focus-panel">
+              <div class="scientific-focus-head">
+                <div>
+                  <span class="eyebrow">DOCUMENTAÇÃO EM EVIDÊNCIA</span>
+                  <h3>Como o SIPIC-RP transforma dados ambientais em análise térmica</h3>
+                  <p>A documentação define uma cadeia rastreável: aquisição → armazenamento e integração → controle de qualidade → modelagem físico-matemática e aprendizado de máquina → estimativa/predição → visualização.</p>
+                </div>
+                <button class="small-button" data-page-link="methodology">Ver metodologia</button>
+              </div>
+              <div class="scientific-pillars">
+                <div><span>01</span><strong>Variáveis</strong><small>temperatura · umidade · vento · radiação · superfície · uso do solo · morfologia</small></div>
+                <div><span>02</span><strong>Indicadores</strong><small>IFT · IIA · IITR · IPT · IICU</small></div>
+                <div><span>03</span><strong>Referência</strong><small>Vênus como enquadramento físico-conceitual, sem equivalência física</small></div>
+                <div><span>04</span><strong>Estudo de caso</strong><small>Ribeirão Preto · análise espacial e temporal</small></div>
+                <div><span>05</span><strong>Validação</strong><small>MAE · RMSE · R² · generalização e interpretabilidade</small></div>
+              </div>
+            </article>
+
+            <article class="panel project-understanding-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="eyebrow">ENTENDA ANTES DE ANALISAR</span>
+                  <h3>O que o SIPIC-RP faz?</h3>
+                  <p>O sistema organiza dados ambientais e urbanos para estudar a ocorrência e a intensificação de ilhas de calor em Ribeirão Preto.</p>
+                </div>
+                <button class="small-button" data-page-link="data">Ver banco e fontes</button>
+              </div>
+              <div class="understanding-flow">
+                <div class="understanding-step"><span>01</span><strong>Dados ambientais</strong><small>temperatura, umidade, vento, precipitação e radiação</small></div>
+                <div class="understanding-arrow">→</div>
+                <div class="understanding-step"><span>02</span><strong>Superfície urbana</strong><small>vegetação, uso do solo, propriedades térmicas e morfologia</small></div>
+                <div class="understanding-arrow">→</div>
+                <div class="understanding-step"><span>03</span><strong>Banco principal</strong><small>dados organizados por setor, fonte, tempo e variável</small></div>
+                <div class="understanding-arrow">→</div>
+                <div class="understanding-step"><span>04</span><strong>Indicadores</strong><small>IFT, IIA, IITR, IPT e IICU</small></div>
+                <div class="understanding-arrow">→</div>
+                <div class="understanding-step"><span>05</span><strong>Análise e predição</strong><small>modelagem, validação e comunicação dos resultados</small></div>
+              </div>
+              <div class="understanding-notes">
+                <div><strong>Banco de dados</strong><span>É a camada que organiza, armazena e permite consultar os dados utilizados pelo sistema.</span></div>
+                <div><strong>Documentação</strong><span>Define as variáveis, indicadores, metodologia, etapas de processamento e critérios de validação.</span></div>
+                <div><strong>Vênus</strong><span>Funciona como referência físico-conceitual para processos de energia e calor; não é uma equivalência física com a Terra.</span></div>
+              </div>
+            </article>
+
+
+        <article class="panel understanding-detail-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">VISÃO GERAL DO FLUXO</span>
+              <h3>Da informação bruta ao resultado apresentado</h3>
+              <p>O SIPIC-RP integra diferentes tipos de dados ambientais e urbanos, organiza essas informações e as disponibiliza para análise térmica, indicadores, modelagem e visualização.</p>
+            </div>
+            <button class="small-button" data-page-link="data">Abrir dados e fontes</button>
+          </div>
+          <div class="knowledge-grid">
+            <div><span>01</span><strong>Aquisição</strong><p>Dados meteorológicos, ambientais, espaciais e de sensores são obtidos a partir das fontes disponíveis.</p></div>
+            <div><span>02</span><strong>Organização</strong><p>As informações são associadas à fonte, unidade, localização, tempo e demais metadados relevantes.</p></div>
+            <div><span>03</span><strong>Controle de qualidade</strong><p>Tipos, unidades, valores ausentes e consistência dos dados são considerados antes das etapas analíticas.</p></div>
+            <div><span>04</span><strong>Modelagem</strong><p>Os dados podem alimentar indicadores, modelos físico-matemáticos e técnicas de aprendizado de máquina.</p></div>
+            <div><span>05</span><strong>Resultado</strong><p>O sistema apresenta mapas, séries, análises, classificações e estimativas de acordo com os dados disponíveis e validados.</p></div>
+          </div>
+        </article>
+
+        <article class="panel database-knowledge-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">BANCO DE DADOS PRINCIPAL</span>
+              <h3>Por que o banco de dados é importante?</h3>
+              <p>O banco é a camada que organiza, armazena e permite consultar os dados utilizados pelo sistema. Ele conecta as informações coletadas às etapas de processamento e análise.</p>
+            </div>
+            <span class="panel-tag">POSTGRESQL / SUPABASE</span>
+          </div>
+          <div class="db-knowledge-flow">
+            <div><strong>Fontes</strong><small>APIs · estações · sensores · dados espaciais</small></div>
+            <i>→</i>
+            <div><strong>Banco principal</strong><small>dados estruturados por fonte, variável, tempo e localização</small></div>
+            <i>→</i>
+            <div><strong>Processamento</strong><small>qualidade · indicadores · modelagem</small></div>
+            <i>→</i>
+            <div><strong>Dashboard</strong><small>mapas · análises · predições · relatórios</small></div>
+          </div>
+          <div class="database-knowledge-list">
+            <div><strong>Dados ambientais</strong><span>Temperatura, umidade, vento, precipitação e radiação.</span></div>
+            <div><strong>Dados urbanos e espaciais</strong><span>Uso e cobertura do solo, vegetação, propriedades térmicas e morfologia urbana.</span></div>
+            <div><strong>Metadados e rastreabilidade</strong><span>Fonte, unidade, localização, timestamp e informações necessárias à integração.</span></div>
+            <div><strong>Resultados</strong><span>Indicadores, estimativas, predições, alertas e demais resultados computacionais.</span></div>
+          </div>
+        </article>
+
+        <article class="panel data-knowledge-card">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">TIPOS DE INFORMAÇÃO</span>
+              <h3>O que significa cada dado exibido?</h3>
+              <p>O sistema diferencia a origem e o estágio de processamento das informações para manter a rastreabilidade científica.</p>
+            </div>
+          </div>
+          <div class="data-knowledge-grid">
+            <div><strong>OBSERVADO</strong><span>Obtido de uma fonte observacional, como estação ou API meteorológica.</span></div>
+            <div><strong>CALCULADO</strong><span>Derivado do processamento de outras variáveis ou fórmulas.</span></div>
+            <div><strong>SIMULADO</strong><span>Produzido por uma simulação ou representação computacional.</span></div>
+            <div><strong>PREDITO</strong><span>Gerado por um modelo para estimar condições futuras ou resultados esperados.</span></div>
+          </div>
+        </article>
+
+        <article class="panel scientific-reference-card">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">BASE CIENTÍFICA</span>
+              <h3>Qual é o papel de Vênus no SIPIC-RP?</h3>
+              <p>Vênus funciona como uma referência físico-conceitual para discutir processos relacionados à interação entre energia, atmosfera e superfície.</p>
+            </div>
+            <button class="small-button" data-page-link="venus">Ver comparação</button>
+          </div>
+          <div class="reference-callout">
+            <strong>Importante:</strong> a documentação estabelece que Vênus não representa uma equivalência física, relação causal ou transferência direta de condições para o ambiente urbano terrestre. A referência é utilizada para organizar conceitos de conservação e transferência de energia, emissão de radiação térmica e armazenamento de energia.
+          </div>
+        </article>
       </section>
 
       <section class="app-page" id="page-heatmap" data-title="Mapa térmico">
