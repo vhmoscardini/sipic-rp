@@ -4329,6 +4329,20 @@ tbody tr:hover {
 #heatMapSvg .map-road { filter: drop-shadow(0 1px 1px rgba(0,0,0,.45)); }
 #heatMapSvg .city-boundary { filter: drop-shadow(0 0 8px rgba(44,154,207,.2)); }
 
+/* Mobile SVG safeguard: avoid GPU compositing/filter artifacts on heatmap imagery. */
+@media (max-width: 600px) {
+  #heatMapSvg {
+    filter: none !important;
+    -webkit-filter: none !important;
+    mix-blend-mode: normal !important;
+    isolation: isolate;
+  }
+  #heatMapSvg .urban-blocks {
+    mix-blend-mode: normal;
+    opacity: .34;
+  }
+}
+
 
 .api-console-card { grid-column: 1 / -1; }
 .api-console-actions { display:flex; gap:8px; }

@@ -1843,11 +1843,17 @@
     const layer = state.mapLayer;
     const boundary = "M190,182 C260,95 402,70 521,112 C642,54 802,74 903,154 C1043,207 1045,348 973,425 C940,543 799,612 671,590 C554,655 400,603 338,521 C213,510 141,410 171,313 C128,257 143,211 190,182 Z";
 
+    // Em navegadores móveis, filtros SVG com blur + gradientes duplicados podem
+    // sofrer composição incorreta pela GPU e deixar o mapa com cores lavadas/invertidas.
+    // Cada gradiente recebe um ID único e, em telas pequenas, o blur é desativado.
+    const isMobileMap = typeof window !== "undefined" && window.matchMedia?.("(max-width: 600px)").matches;
     const heatBlobs = sectors.map((sector, index) => {
       const value = layerValue(sector, layer);
       const color = layerColor(value, layer);
       const radius = layer === "ndvi" ? 78 : 105 + sector.score * 0.32;
-      return `<radialGradient id="blob${index}" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="${color}" stop-opacity=".85"/><stop offset="48%" stop-color="${color}" stop-opacity=".42"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></radialGradient><circle cx="${sector.x}" cy="${sector.y}" r="${radius}" fill="url(#blob${index})"/>`;
+      const opacity = isMobileMap ? ".72" : ".85";
+      const midOpacity = isMobileMap ? ".34" : ".42";
+      return `<radialGradient id="heatBlob${index}" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="${color}" stop-opacity="${opacity}"/><stop offset="48%" stop-color="${color}" stop-opacity="${midOpacity}"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></radialGradient><circle cx="${sector.x}" cy="${sector.y}" r="${radius}" fill="url(#heatBlob${index})"/>`;
     }).join("");
 
     const roads = [
@@ -1904,8 +1910,7 @@
       <path class="city-boundary" d="${boundary}"/>
       <g clip-path="url(#cityClip)">
         <rect x="130" y="60" width="940" height="580" fill="url(#mapGrid)"/>
-        <g filter="url(#softGlow)">${heatBlobs}</g>
-        <g opacity=".85">${heatBlobs}</g>
+        ${isMobileMap ? `<g opacity=".92">${heatBlobs}</g>` : `<g filter="url(#softGlow)">${heatBlobs}</g><g opacity=".85">${heatBlobs}</g>`}
         <g class="urban-blocks">${blocks}</g>
         ${minorRoads.map((d) => `<path class="map-road" d="${d}"/>`).join("")}
         ${roads.map((d) => `<path class="map-road major" d="${d}"/>`).join("")}
