@@ -628,6 +628,7 @@
           <article class="kpi-card"><span>Horas em risco</span><strong id="analyticsRiskHours">-- h</strong><small id="analyticsRiskHoursNote">nível alto ou crítico</small></article>
           <article class="kpi-card"><span>Confiança média</span><strong id="analyticsConfidence">--%</strong><small>modelo de 48 h</small></article>
         </div>
+
         <article class="panel historical-card">
           <div class="panel-heading">
             <div><span class="eyebrow">CONTEXTO HISTÓRICO</span><h3>Comparação histórica de referência</h3><p>Valores demonstrativos para contextualização visual; substitua pelos dados históricos validados quando disponíveis.</p></div>
@@ -641,6 +642,7 @@
             <div><span>2026</span><strong>34,1 °C</strong><b><i style="--w:90%"></i></b></div>
           </div>
         </article>
+
         <div class="analytics-grid">
           <article class="panel wide-chart-card">
             <div class="panel-heading"><div><h3>Temperatura do ar — urbano × periurbano</h3><p id="analyticsSeriesStatus">Histórico persistido quando disponível · °C</p></div><div class="chart-legend"><span><i class="legend-line cyan"></i>Urbano</span><span><i class="legend-line blue"></i>Periurbano</span></div></div>
@@ -1110,11 +1112,35 @@
   <div class="demo-modal" id="demoModal" hidden role="dialog" aria-modal="true" aria-labelledby="demoModalTitle">
     <div class="demo-modal-card">
       <div class="panel-heading"><div><span class="eyebrow">MODO DEMONSTRAÇÃO</span><h3 id="demoModalTitle">Simulação de onda de calor</h3><p>Sequência ilustrativa para apresentação do funcionamento do SIPIC-RP. Não altera os dados reais nem as APIs.</p></div><button class="icon-button" id="closeDemoButton" aria-label="Fechar demonstração">×</button></div>
+      <div class="demo-controls">
+        <div class="demo-control-group demo-control-datetime">
+          <label for="demoStart">Início</label>
+          <input id="demoStart" type="datetime-local" aria-label="Data e horário inicial da demonstração">
+        </div>
+        <div class="demo-control-arrow" aria-hidden="true">→</div>
+        <div class="demo-control-group demo-control-datetime">
+          <label for="demoEnd">Fim</label>
+          <input id="demoEnd" type="datetime-local" aria-label="Data e horário final da demonstração">
+        </div>
+        <div class="demo-control-group demo-control-speed">
+          <span>Velocidade</span>
+          <div class="demo-speed-options" role="radiogroup" aria-label="Velocidade da simulação">
+            <label><input type="radio" name="demoSpeed" value="0.5">0,5×</label>
+            <label><input type="radio" name="demoSpeed" value="1" checked>1×</label>
+            <label><input type="radio" name="demoSpeed" value="2">2×</label>
+            <label><input type="radio" name="demoSpeed" value="5">5×</label>
+          </div>
+        </div>
+        <button type="button" class="small-button demo-wave-button" id="demoHeatwaveButton"><svg class="icon"><use href="#i-thermometer"></use></svg>Simular onda de calor</button>
+      </div>
+      <div class="demo-range-summary" id="demoRangeSummary" aria-live="polite"></div>
+      <div class="demo-validation" id="demoValidation" role="status" aria-live="polite"></div>
       <div class="demo-sequence" id="demoSequence"></div>
-      <div class="demo-modal-footer"><span><i class="status-dot orange"></i>Simulação visual</span><button class="primary-button" id="playDemoButton"><svg class="icon"><use href="#i-play"></use></svg>Reproduzir sequência</button></div>
+      <div class="demo-progress" aria-label="Progresso da simulação"><i id="demoProgressBar"></i></div>
+      <div class="demo-live-status" id="demoLiveStatus" aria-live="polite">Pronto para iniciar a demonstração.</div>
+      <div class="demo-modal-footer"><span><i class="status-dot orange"></i>Simulação visual · dados demonstrativos</span><div class="demo-footer-actions"><button type="button" class="secondary-button" id="resetDemoButton"><svg class="icon"><use href="#i-refresh"></use></svg>Reiniciar</button><button type="button" class="primary-button" id="playDemoButton"><svg class="icon"><use href="#i-play"></use></svg>Iniciar simulação</button></div></div>
     </div>
   </div>
-
 
   <svg class="svg-sprite" aria-hidden="true" width="0" height="0">
     <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>

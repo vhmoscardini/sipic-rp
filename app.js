@@ -458,19 +458,224 @@
     const vegetationText = Number(current.ndvi) < 0.3 ? "baixa cobertura vegetal" : "cobertura vegetal moderada";
     setText("#driverExplanation", `Temperatura de ${pt(current.air_temperature_c, 1)} °C, umidade de ${pt(current.relative_humidity_pct, 0)}% e vento de ${pt(current.wind_speed_ms, 1)} m/s compõem o contexto atual; o setor apresenta ${vegetationText}.`);
   }
+
+  const demoState = {
+    timer: null,
+    steps: [],
+    currentIndex: -1,
+    speed: 1,
+    hasSimulated: false,
+  };
+
+  function toLocalInputValue(date) {
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function demoDefaultRange() {
+    const start = new Date();
+    start.setMinutes(0, 0, 0);
+    const end = new Date(start.getTime() + 5 * 60 * 60 * 1000);
+    return { start, end };
+  }
+
+  function readDemoDate(id) {
+    const value = $(id)?.value;
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function getDemoSpeed() {
+    const selected = $('input[name="demoSpeed"]:checked');
+    const speed = Number(selected?.value || 1);
+    return [0.5, 1, 2, 5].includes(speed) ? speed : 1;
+  }
+
+  function demoStatus(value) {
+    if (value >= 38) return { label: "ALERTA", cls: "alert" };
+    if (value >= 35) return { label: "ATENÇÃO", cls: "attention" };
+    return { label: "NORMAL", cls: "normal" };
+  }
+
+  function buildDemoSteps(start, end) {
+    const hours = Math.max(1, Math.round((end - start) / 3600000));
+    const count = Math.min(hours + 1, 169);
+    const effectiveHours = Math.max(1, count - 1);
+    return Array.from({ length: count }, (_, i) => {
+      const progress = effectiveHours ? i / effectiveHours : 0;
+      const wave = Math.sin(progress * Math.PI);
+      const temperature = 30.8 + progress * 5.8 + wave * 2.8;
+      const humidity = Math.max(24, Math.round(52 - progress * 17));
+      const wind = Math.max(0.8, 2.9 - progress * 1.2);
+      const heatIndex = temperature + Math.max(0, (45 - humidity) * 0.045);
+      const time = new Date(start.getTime() + Math.round((end - start) * progress));
+      return { time, temperature, humidity, wind, heatIndex, risk: demoStatus(temperature) };
+    });
+  }
+
+  function formatDemoDate(date) {
+    return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+  }
+
+  function validateDemoRange() {
+    const start = readDemoDate("#demoStart");
+    const end = readDemoDate("#demoEnd");
+    const validation = $("#demoValidation");
+    if (!start || !end) {
+      if (validation) validation.textContent = "Selecione a data e o horário de início e fim.";
+      return null;
+    }
+    if (end <= start) {
+      if (validation) validation.textContent = "O horário final precisa ser posterior ao horário inicial.";
+      return null;
+    }
+    const hours = (end - start) / 3600000;
+    if (hours > 168) {
+      if (validation) validation.textContent = "Escolha um intervalo de até 7 dias para a demonstração.";
+      return null;
+    }
+    if (validation) validation.textContent = "";
+    return { start, end, hours };
+  }
+
+  function renderDemoSequence(steps, reveal = demoState.hasSimulated) {
+    const host = $("#demoSequence");
+    if (!host) return;
+    const visible = steps.length <= 12 ? steps : steps.filter((_, i) => i === 0 || i === steps.length - 1 || i % Math.ceil(steps.length / 10) === 0).slice(0, 12);
+    if (!reveal) {
+      const count = Math.max(1, Math.min(12, steps.length || 6));
+      host.innerHTML = Array.from({ length: count }, (_, i) => `<div class="demo-step demo-step-placeholder"><span>--:--</span><strong>0,0°C</strong><b><i style="--w:0%"></i></b><small>AGUARDANDO</small></div>`).join("");
+      return;
+    }
+    host.innerHTML = visible.map((row) => {
+      const width = Math.min(100, Math.max(10, ((row.temperature - 28) / 16) * 100));
+      return `<div class="demo-step" data-demo-time="${row.time.getTime()}"><span>${row.time.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span><strong>${row.temperature.toFixed(1).replace(".", ",")}°C</strong><b><i style="--w:${width}%"></i></b><small>${row.risk.label}</small></div>`;
+    }).join("");
+  }
+
+  function updateDemoSummary(range) {
+    const summary = $("#demoRangeSummary");
+    if (!summary || !range) return;
+    const duration = range.hours < 24 ? `${Math.round(range.hours)} h` : `${(range.hours / 24).toFixed(1).replace(".", ",")} dias`;
+    summary.innerHTML = `<strong>Intervalo selecionado:</strong> ${formatDemoDate(range.start)} → ${formatDemoDate(range.end)} <span>·</span> <strong>Duração:</strong> ${duration} <span>·</span> <strong>Passo:</strong> 1 h`;
+  }
+
+  function setDemoActiveStep(index) {
+    demoState.currentIndex = index;
+    const steps = demoState.steps;
+    const progress = $("#demoProgressBar");
+    const status = $("#demoLiveStatus");
+    const visualSteps = $$(".demo-step");
+    visualSteps.forEach((el) => el.classList.remove("is-active"));
+    if (!demoState.hasSimulated) {
+      if (progress) progress.style.width = "0%";
+      if (status) status.textContent = "Aguardando simulação. Os indicadores permanecerão em 0 até clicar em Simular onda de calor.";
+      return;
+    }
+    const row = steps[index];
+    if (!row) {
+      if (progress) progress.style.width = "0%";
+      if (status) status.textContent = "Cenário carregado. Clique em Iniciar simulação para reproduzir a sequência.";
+      return;
+    }
+    const match = visualSteps.find((el) => Number(el.dataset.demoTime) === row.time.getTime());
+    if (match) match.classList.add("is-active");
+    const pct = steps.length > 1 ? (index / (steps.length - 1)) * 100 : 100;
+    if (progress) progress.style.width = `${pct}%`;
+    if (status) status.innerHTML = `<strong>${formatDemoDate(row.time)}</strong> · ${row.temperature.toFixed(1).replace(".", ",")} °C · umidade ${row.humidity}% · vento ${row.wind.toFixed(1).replace(".", ",")} m/s · índice de calor ${row.heatIndex.toFixed(1).replace(".", ",")} °C · <b>${row.risk.label}</b>`;
+  }
+
+  function stopDemoTimer() {
+    if (demoState.timer) {
+      clearInterval(demoState.timer);
+      demoState.timer = null;
+    }
+  }
+
+  function prepareDemo() {
+    const range = validateDemoRange();
+    if (!range) return false;
+    stopDemoTimer();
+    demoState.speed = getDemoSpeed();
+    demoState.steps = buildDemoSteps(range.start, range.end);
+    renderDemoSequence(demoState.steps, demoState.hasSimulated);
+    updateDemoSummary(range);
+    setDemoActiveStep(-1);
+    const button = $("#playDemoButton");
+    if (button) button.innerHTML = '<svg class="icon"><use href="#i-play"></use></svg>Iniciar simulação';
+    return true;
+  }
+
   function openDemoModal() {
     const modal = $("#demoModal");
-    const host = $("#demoSequence");
-    if (!modal || !host) return;
-    const values = [31, 33, 35, 37, 39, 38];
-    host.innerHTML = values.map((v, i) => `<div class="demo-step"><span>${10 + i}:00</span><strong>${v}°C</strong><b><i style="--w:${Math.min(100, 38 + i * 12)}%"></i></b><small>${v >= 38 ? "ALERTA" : v >= 35 ? "ATENÇÃO" : "NORMAL"}</small></div>`).join("");
+    if (!modal) return;
+    const defaults = demoDefaultRange();
+    const startInput = $("#demoStart");
+    const endInput = $("#demoEnd");
+    if (startInput && !startInput.value) startInput.value = toLocalInputValue(defaults.start);
+    if (endInput && !endInput.value) endInput.value = toLocalInputValue(defaults.end);
+    demoState.hasSimulated = false;
+    $("#demoValidation") && ($("#demoValidation").textContent = "");
+    prepareDemo();
+    const status = $("#demoLiveStatus");
+    if (status) status.textContent = "Aguardando simulação. Os indicadores permanecerão em 0 até clicar em Simular onda de calor.";
     modal.hidden = false;
     document.body.classList.add("demo-open");
   }
-  function closeDemoModal() { const modal = $("#demoModal"); if (modal) modal.hidden = true; document.body.classList.remove("demo-open"); }
+
+  function closeDemoModal() {
+    const modal = $("#demoModal");
+    stopDemoTimer();
+    if (modal) modal.hidden = true;
+    document.body.classList.remove("demo-open");
+  }
+
   function playDemoSequence() {
-    const steps = $$(".demo-step");
-    steps.forEach((el, i) => { el.classList.remove("is-active"); setTimeout(() => el.classList.add("is-active"), i * 280); });
+    const range = validateDemoRange();
+    if (!range) return;
+    demoState.hasSimulated = true;
+    if (!demoState.steps.length || demoState.currentIndex < 0 || demoState.currentIndex >= demoState.steps.length - 1) {
+      demoState.speed = getDemoSpeed();
+      demoState.steps = buildDemoSteps(range.start, range.end);
+      renderDemoSequence(demoState.steps);
+      updateDemoSummary(range);
+      demoState.currentIndex = -1;
+    }
+    const button = $("#playDemoButton");
+    if (demoState.timer) return;
+    if (button) button.innerHTML = '<svg class="icon"><use href="#i-pause"></use></svg>Pausar simulação';
+    let index = Math.max(0, demoState.currentIndex + 1);
+    setDemoActiveStep(index);
+    const delay = Math.max(220, Math.round(900 / demoState.speed));
+    demoState.timer = setInterval(() => {
+      index += 1;
+      if (index >= demoState.steps.length) {
+        stopDemoTimer();
+        setDemoActiveStep(demoState.steps.length - 1);
+        if (button) button.innerHTML = '<svg class="icon"><use href="#i-refresh"></use></svg>Reproduzir novamente';
+        return;
+      }
+      setDemoActiveStep(index);
+    }, delay);
+  }
+
+  function resetDemoSequence() {
+    stopDemoTimer();
+    prepareDemo();
+  }
+
+  function simulateHeatwaveRange() {
+    const defaults = demoDefaultRange();
+    const end = new Date(defaults.start.getTime() + 8 * 60 * 60 * 1000);
+    const startInput = $("#demoStart");
+    const endInput = $("#demoEnd");
+    if (startInput) startInput.value = toLocalInputValue(defaults.start);
+    if (endInput) endInput.value = toLocalInputValue(end);
+    demoState.hasSimulated = true;
+    prepareDemo();
+    const status = $("#demoLiveStatus");
+    if (status) status.textContent = "Cenário de onda de calor carregado. Os indicadores foram liberados. Clique em Iniciar simulação para reproduzir a sequência.";
   }
 
   function renderApiStatus() {
@@ -2030,13 +2235,23 @@
     $$(".nav-item").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
     $$(".mobile-nav-item[data-page]").forEach((button) => button.addEventListener("click", () => setPage(button.dataset.page)));
     $("#mobileMoreButton")?.addEventListener("click", openMobileSidebar);
-
     $("#demoModeButton")?.addEventListener("click", openDemoModal);
     $("#closeDemoButton")?.addEventListener("click", closeDemoModal);
-    $("#playDemoButton")?.addEventListener("click", playDemoSequence);
+    $("#playDemoButton")?.addEventListener("click", () => {
+      if (demoState.timer) {
+        stopDemoTimer();
+        const button = $("#playDemoButton");
+        if (button) button.innerHTML = '<svg class="icon"><use href="#i-play"></use></svg>Continuar simulação';
+      } else {
+        playDemoSequence();
+      }
+    });
+    $("#resetDemoButton")?.addEventListener("click", resetDemoSequence);
+    $("#demoHeatwaveButton")?.addEventListener("click", simulateHeatwaveRange);
+    ["#demoStart", "#demoEnd"].forEach((selector) => $(selector)?.addEventListener("change", prepareDemo));
+    $$('input[name="demoSpeed"]').forEach((input) => input.addEventListener("change", () => { demoState.speed = getDemoSpeed(); }));
     $("#demoModal")?.addEventListener("click", (event) => { if (event.target.id === "demoModal") closeDemoModal(); });
     document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDemoModal(); });
-
     $$('[data-page-link]').forEach((button) => button.addEventListener("click", () => setPage(button.dataset.pageLink)));
 
     $("#mobileMenuButton")?.addEventListener("click", () => {
