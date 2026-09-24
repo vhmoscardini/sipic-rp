@@ -567,7 +567,7 @@
     const revealed = demoState.steps.slice(0, demoState.currentIndex + 1).some((item) => item.time.getTime() === timestamp);
     if (!revealed) {
       const status = $("#demoLiveStatus");
-      if (status) status.textContent = "Esse ponto ainda não foi revelado pela animação. Aguarde ou avance a simulação.";
+      if (status) status.textContent = "Esse ponto ainda não foi revelado pela animação. Aguarde ou avance o ciclo.";
       return;
     }
     $$("#demoSequence .demo-step").forEach((el) => el.classList.toggle("is-selected", Number(el.dataset.demoTime) === timestamp));
@@ -615,7 +615,7 @@
       if (progress) progress.style.width = "0%";
       updateDemoTelemetry(null, false);
       if (status) status.textContent = demoState.hasSimulated
-        ? "Cenário preparado. Clique em Iniciar simulação para revelar os dados durante a animação."
+        ? "Cenário preparado. Clique em Iniciar ciclo para revelar os dados durante a animação."
         : "Aguardando simulação. Os indicadores permanecerão em 0 até iniciar a demonstração.";
       return;
     }
@@ -658,7 +658,7 @@
     updateDemoSummary(range);
     updateDemoTelemetry(null, false);
     const button = $("#playDemoButton");
-    if (button) button.innerHTML = '<svg class="icon"><use href="#i-play"></use></svg>Iniciar simulação';
+    if (button) button.innerHTML = '<svg class="icon"><use href="#i-play"></use></svg>Iniciar ciclo';
     return true;
   }
 
@@ -742,9 +742,10 @@
     updateDemoSummary({ start: defaults.start, end, hours: 8 });
     updateDemoTelemetry(null, false);
     const status = $("#demoLiveStatus");
-    if (status) status.textContent = "Cenário de onda de calor preparado. Clique em Iniciar simulação para revelar os números junto com a animação.";
+    if (status) status.textContent = "Cenário de onda de calor preparado. Clique em Iniciar ciclo para revelar os números junto com a animação.";
+
     const button = $("#playDemoButton");
-    if (button) button.innerHTML = '<svg class="icon"><use href="#i-play"></use></svg>Iniciar simulação';
+    if (button) button.innerHTML = '<svg class="icon"><use href="#i-play"></use></svg>Iniciar ciclo';
   }
 
   function renderApiStatus() {
