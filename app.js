@@ -539,19 +539,70 @@
     return { start, end, hours };
   }
 
-  function renderDemoSequence(steps, reveal = demoState.hasSimulated) {
+  function getVisibleDemoSteps(steps) {
+    return steps.length <= 12 ? steps : steps.filter((_, i) => i === 0 || i === steps.length - 1 || i % Math.ceil(steps.length / 10) === 0).slice(0, 12);
+  }
+
+  function renderDemoSequence(steps, reveal = false) {
     const host = $("#demoSequence");
     if (!host) return;
-    const visible = steps.length <= 12 ? steps : steps.filter((_, i) => i === 0 || i === steps.length - 1 || i % Math.ceil(steps.length / 10) === 0).slice(0, 12);
-    if (!reveal) {
-      const count = Math.max(1, Math.min(12, steps.length || 6));
-      host.innerHTML = Array.from({ length: count }, (_, i) => `<div class="demo-step demo-step-placeholder"><span>--:--</span><strong>0,0°C</strong><b><i style="--w:0%"></i></b><small>AGUARDANDO</small></div>`).join("");
+    const visible = getVisibleDemoSteps(steps);
+    host.innerHTML = visible.map((row) => {
+      const time = row.time.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      const key = row.time.getTime();
+      if (!reveal) {
+        return `<div class="demo-step demo-step-placeholder" data-demo-time="${key}" aria-disabled="true"><span>${time}</span><strong>0,0°C</strong><b><i style="--w:0%"></i></b><small>AGUARDANDO</small></div>`;
+      }
+      const width = Math.min(100, Math.max(10, ((row.temperature - 28) / 16) * 100));
+      return `<button type="button" class="demo-step" data-demo-time="${key}" aria-label="Selecionar dados das ${time}"><span>${time}</span><strong>${row.temperature.toFixed(1).replace(".", ",")}°C</strong><b><i style="--w:${width}%"></i></b><small>${row.risk.label}</small></button>`;
+    }).join("");
+    if (reveal) {
+      $$("#demoSequence .demo-step").forEach((el) => el.addEventListener("click", () => selectDemoStepByTime(Number(el.dataset.demoTime))));
+    }
+  }
+
+  function selectDemoStepByTime(timestamp) {
+    const row = demoState.steps.find((item) => item.time.getTime() === timestamp);
+    if (!row || !demoState.hasSimulated || demoState.currentIndex < 0) return;
+    const revealed = demoState.steps.slice(0, demoState.currentIndex + 1).some((item) => item.time.getTime() === timestamp);
+    if (!revealed) {
+      const status = $("#demoLiveStatus");
+      if (status) status.textContent = "Esse ponto ainda não foi revelado pela animação. Aguarde ou avance a simulação.";
       return;
     }
-    host.innerHTML = visible.map((row) => {
-      const width = Math.min(100, Math.max(10, ((row.temperature - 28) / 16) * 100));
-      return `<div class="demo-step" data-demo-time="${row.time.getTime()}"><span>${row.time.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span><strong>${row.temperature.toFixed(1).replace(".", ",")}°C</strong><b><i style="--w:${width}%"></i></b><small>${row.risk.label}</small></div>`;
-    }).join("");
+    $$("#demoSequence .demo-step").forEach((el) => el.classList.toggle("is-selected", Number(el.dataset.demoTime) === timestamp));
+    const panel = $("#demoSelectedDetail");
+    if (panel) panel.hidden = false;
+    setText("#demoSelectedTitle", `Dados de ${formatDemoDate(row.time)}`);
+    setText("#demoSelectedTime", formatDemoDate(row.time));
+    setText("#demoSelectedTemp", `${row.temperature.toFixed(1).replace(".", ",")} °C`);
+    setText("#demoSelectedHumidity", `${row.humidity}%`);
+    setText("#demoSelectedWind", `${row.wind.toFixed(1).replace(".", ",")} m/s`);
+    setText("#demoSelectedHeatIndex", `${row.heatIndex.toFixed(1).replace(".", ",")} °C`);
+    const pct = demoState.steps.length > 1 ? Math.round((demoState.steps.indexOf(row) / (demoState.steps.length - 1)) * 100) : 100;
+    setText("#demoSelectedProgress", `${pct}%`);
+    setText("#demoSelectedRisk", row.risk.label);
+    const badge = $("#demoSelectedRisk");
+    if (badge) { badge.classList.remove("risk-normal","risk-attention","risk-alert"); badge.classList.add(`risk-${row.risk.cls}`); }
+    setText("#demoSelectedExplanation", `Neste ponto, a simulação registra ${row.temperature.toFixed(1).replace(".", ",")} °C, umidade de ${row.humidity}% e vento de ${row.wind.toFixed(1).replace(".", ",")} m/s. O índice de calor demonstrativo é ${row.heatIndex.toFixed(1).replace(".", ",")} °C, com classificação ${row.risk.label}.`);
+  }
+
+  function updateDemoTelemetry(row, animated = true) {
+    const ids = [
+      ["demoMetricTemp", row ? `${row.temperature.toFixed(1).replace(".", ",")} °C` : "0,0 °C"],
+      ["demoMetricHumidity", row ? `${row.humidity}%` : "0%"],
+      ["demoMetricWind", row ? `${row.wind.toFixed(1).replace(".", ",")} m/s` : "0,0 m/s"],
+      ["demoMetricHeatIndex", row ? `${row.heatIndex.toFixed(1).replace(".", ",")} °C` : "0,0 °C"],
+      ["demoMetricRisk", row ? row.risk.label : "AGUARDANDO"],
+    ];
+    ids.forEach(([id, value]) => {
+      const el = $("#" + id);
+      if (!el) return;
+      el.classList.remove("demo-number-pop");
+      void el.offsetWidth;
+      el.textContent = value;
+      if (animated && row) el.classList.add("demo-number-pop");
+    });
   }
 
   function updateDemoSummary(range) {
@@ -568,22 +619,32 @@
     const status = $("#demoLiveStatus");
     const visualSteps = $$(".demo-step");
     visualSteps.forEach((el) => el.classList.remove("is-active"));
-    if (!demoState.hasSimulated) {
+    if (!demoState.hasSimulated || index < 0) {
       if (progress) progress.style.width = "0%";
-      if (status) status.textContent = "Aguardando simulação. Os indicadores permanecerão em 0 até clicar em Simular onda de calor.";
+      updateDemoTelemetry(null, false);
+      if (status) status.textContent = demoState.hasSimulated
+        ? "Cenário preparado. Clique em Iniciar simulação para revelar os dados durante a animação."
+        : "Aguardando simulação. Os indicadores permanecerão em 0 até iniciar a demonstração.";
       return;
     }
     const row = steps[index];
-    if (!row) {
-      if (progress) progress.style.width = "0%";
-      if (status) status.textContent = "Cenário carregado. Clique em Iniciar simulação para reproduzir a sequência.";
-      return;
-    }
+    if (!row) return;
     const match = visualSteps.find((el) => Number(el.dataset.demoTime) === row.time.getTime());
-    if (match) match.classList.add("is-active");
+    if (match) {
+      const width = Math.min(100, Math.max(10, ((row.temperature - 28) / 16) * 100));
+      const replacement = document.createElement("button");
+      replacement.type = "button";
+      replacement.className = "demo-step is-active demo-step-reveal";
+      replacement.dataset.demoTime = row.time.getTime();
+      replacement.setAttribute("aria-label", `Selecionar dados das ${row.time.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`);
+      replacement.innerHTML = `<span>${row.time.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span><strong>${row.temperature.toFixed(1).replace(".", ",")}°C</strong><b><i style="--w:${width}%"></i></b><small>${row.risk.label}</small>`;
+      match.replaceWith(replacement);
+      replacement.addEventListener("click", () => selectDemoStepByTime(row.time.getTime()));
+    }
     const pct = steps.length > 1 ? (index / (steps.length - 1)) * 100 : 100;
     if (progress) progress.style.width = `${pct}%`;
-    if (status) status.innerHTML = `<strong>${formatDemoDate(row.time)}</strong> · ${row.temperature.toFixed(1).replace(".", ",")} °C · umidade ${row.humidity}% · vento ${row.wind.toFixed(1).replace(".", ",")} m/s · índice de calor ${row.heatIndex.toFixed(1).replace(".", ",")} °C · <b>${row.risk.label}</b>`;
+    updateDemoTelemetry(row, true);
+    if (status) status.innerHTML = `<strong>${formatDemoDate(row.time)}</strong> · dados revelados progressivamente · <b>${row.risk.label}</b>`;
   }
 
   function stopDemoTimer() {
@@ -599,9 +660,13 @@
     stopDemoTimer();
     demoState.speed = getDemoSpeed();
     demoState.steps = buildDemoSteps(range.start, range.end);
-    renderDemoSequence(demoState.steps, demoState.hasSimulated);
+    demoState.hasSimulated = false;
+    demoState.currentIndex = -1;
+    renderDemoSequence(demoState.steps, false);
     updateDemoSummary(range);
-    setDemoActiveStep(-1);
+    updateDemoTelemetry(null, false);
+    const detail = $("#demoSelectedDetail");
+    if (detail) detail.hidden = true;
     const button = $("#playDemoButton");
     if (button) button.innerHTML = '<svg class="icon"><use href="#i-play"></use></svg>Iniciar simulação';
     return true;
@@ -619,7 +684,7 @@
     $("#demoValidation") && ($("#demoValidation").textContent = "");
     prepareDemo();
     const status = $("#demoLiveStatus");
-    if (status) status.textContent = "Aguardando simulação. Os indicadores permanecerão em 0 até clicar em Simular onda de calor.";
+    if (status) status.textContent = "Escolha o intervalo e clique em Simular. Os indicadores ficam em 0 até a animação começar.";
     modal.hidden = false;
     document.body.classList.add("demo-open");
   }
@@ -634,26 +699,30 @@
   function playDemoSequence() {
     const range = validateDemoRange();
     if (!range) return;
-    demoState.hasSimulated = true;
-    if (!demoState.steps.length || demoState.currentIndex < 0 || demoState.currentIndex >= demoState.steps.length - 1) {
+    if (!demoState.hasSimulated) {
+      demoState.hasSimulated = true;
       demoState.speed = getDemoSpeed();
       demoState.steps = buildDemoSteps(range.start, range.end);
-      renderDemoSequence(demoState.steps);
-      updateDemoSummary(range);
       demoState.currentIndex = -1;
+      renderDemoSequence(demoState.steps, false);
+      updateDemoSummary(range);
+      updateDemoTelemetry(null, false);
     }
     const button = $("#playDemoButton");
     if (demoState.timer) return;
+    if (demoState.currentIndex >= demoState.steps.length - 1) demoState.currentIndex = -1;
     if (button) button.innerHTML = '<svg class="icon"><use href="#i-pause"></use></svg>Pausar simulação';
     let index = Math.max(0, demoState.currentIndex + 1);
     setDemoActiveStep(index);
-    const delay = Math.max(220, Math.round(900 / demoState.speed));
+    const delay = Math.max(320, Math.round(1200 / demoState.speed));
     demoState.timer = setInterval(() => {
       index += 1;
       if (index >= demoState.steps.length) {
         stopDemoTimer();
         setDemoActiveStep(demoState.steps.length - 1);
         if (button) button.innerHTML = '<svg class="icon"><use href="#i-refresh"></use></svg>Reproduzir novamente';
+        const status = $("#demoLiveStatus");
+        if (status) status.innerHTML = `<strong>Simulação concluída.</strong> Todos os dados do intervalo foram revelados.`;
         return;
       }
       setDemoActiveStep(index);
@@ -663,6 +732,8 @@
   function resetDemoSequence() {
     stopDemoTimer();
     prepareDemo();
+    const status = $("#demoLiveStatus");
+    if (status) status.textContent = "Demonstração reiniciada. Os indicadores estão em 0 aguardando a animação.";
   }
 
   function simulateHeatwaveRange() {
@@ -672,10 +743,18 @@
     const endInput = $("#demoEnd");
     if (startInput) startInput.value = toLocalInputValue(defaults.start);
     if (endInput) endInput.value = toLocalInputValue(end);
+    stopDemoTimer();
+    demoState.speed = getDemoSpeed();
+    demoState.steps = buildDemoSteps(defaults.start, end);
+    demoState.currentIndex = -1;
     demoState.hasSimulated = true;
-    prepareDemo();
+    renderDemoSequence(demoState.steps, false);
+    updateDemoSummary({ start: defaults.start, end, hours: 8 });
+    updateDemoTelemetry(null, false);
     const status = $("#demoLiveStatus");
-    if (status) status.textContent = "Cenário de onda de calor carregado. Os indicadores foram liberados. Clique em Iniciar simulação para reproduzir a sequência.";
+    if (status) status.textContent = "Cenário de onda de calor preparado. Clique em Iniciar simulação para revelar os números junto com a animação.";
+    const button = $("#playDemoButton");
+    if (button) button.innerHTML = '<svg class="icon"><use href="#i-play"></use></svg>Iniciar simulação';
   }
 
   function renderApiStatus() {
