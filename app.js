@@ -657,8 +657,6 @@
     renderDemoSequence(demoState.steps, false);
     updateDemoSummary(range);
     updateDemoTelemetry(null, false);
-    const detail = $("#demoSelectedDetail");
-    if (detail) detail.hidden = true;
     const button = $("#playDemoButton");
     if (button) button.innerHTML = '<svg class="icon"><use href="#i-play"></use></svg>Iniciar simulação';
     return true;
