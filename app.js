@@ -571,20 +571,12 @@
       return;
     }
     $$("#demoSequence .demo-step").forEach((el) => el.classList.toggle("is-selected", Number(el.dataset.demoTime) === timestamp));
-    const panel = $("#demoSelectedDetail");
-    if (panel) panel.hidden = false;
-    setText("#demoSelectedTitle", `Dados de ${formatDemoDate(row.time)}`);
-    setText("#demoSelectedTime", formatDemoDate(row.time));
-    setText("#demoSelectedTemp", `${row.temperature.toFixed(1).replace(".", ",")} °C`);
-    setText("#demoSelectedHumidity", `${row.humidity}%`);
-    setText("#demoSelectedWind", `${row.wind.toFixed(1).replace(".", ",")} m/s`);
-    setText("#demoSelectedHeatIndex", `${row.heatIndex.toFixed(1).replace(".", ",")} °C`);
+    // A seleção usa os próprios indicadores do topo: não cria uma segunda área de dados.
+    updateDemoTelemetry(row, true);
     const pct = demoState.steps.length > 1 ? Math.round((demoState.steps.indexOf(row) / (demoState.steps.length - 1)) * 100) : 100;
-    setText("#demoSelectedProgress", `${pct}%`);
-    setText("#demoSelectedRisk", row.risk.label);
-    const badge = $("#demoSelectedRisk");
-    if (badge) { badge.classList.remove("risk-normal","risk-attention","risk-alert"); badge.classList.add(`risk-${row.risk.cls}`); }
-    setText("#demoSelectedExplanation", `Neste ponto, a simulação registra ${row.temperature.toFixed(1).replace(".", ",")} °C, umidade de ${row.humidity}% e vento de ${row.wind.toFixed(1).replace(".", ",")} m/s. O índice de calor demonstrativo é ${row.heatIndex.toFixed(1).replace(".", ",")} °C, com classificação ${row.risk.label}.`);
+    const status = $("#demoLiveStatus");
+    if (status) status.innerHTML = `<strong>${formatDemoDate(row.time)}</strong> · ponto selecionado · <b>${row.risk.label}</b> · ${pct}% do ciclo`;
+
   }
 
   function updateDemoTelemetry(row, animated = true) {
